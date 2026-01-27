@@ -1,0 +1,10 @@
+{
+	"id": "sidenote-helper",
+	"name": "Sidenote Helper",
+	"version": "0.1.0",
+	"minAppVersion": "1.5.0",
+	"description": "Prevents Live Preview sidenotes from overlapping by pushing them down, displays links properly, etc.",
+	"author": "Fried Fishsticks",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}
