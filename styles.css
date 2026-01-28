@@ -1,8 +1,33 @@
 /* === Sidenote layout variables === */
-:root {
-	--sidenote-width: 18rem;
-	--sidenote-gap: 2.25rem;
-	--page-offset: clamp(2rem, 20vw, 20rem);
+.markdown-source-view.mod-cm6 {
+	/* 
+	 * Sidenote width uses --sidenote-scale (0 to 1) set by plugin
+	 * This creates smooth scaling based on actual editor width
+	 */
+	--sidenote-base-width: 10rem;
+	--sidenote-max-extra: 18rem;
+
+	/* Width scales smoothly from 10rem to 28rem based on editor width */
+	--sidenote-width: calc(
+		var(--sidenote-base-width) +
+			(var(--sidenote-max-extra) * var(--sidenote-scale, 0.5))
+	);
+
+	--sidenote-gap: 1.5rem;
+	--page-offset: calc(var(--sidenote-width) + var(--sidenote-gap) + 0.5rem);
+}
+
+/* Mode-specific overrides */
+.markdown-source-view.mod-cm6[data-sidenote-mode="compact"] {
+	--sidenote-base-width: 8rem;
+	--sidenote-max-extra: 4rem;
+	--sidenote-gap: 1rem;
+}
+
+.markdown-source-view.mod-cm6[data-sidenote-mode="full"] {
+	--sidenote-base-width: 14rem;
+	--sidenote-max-extra: 20rem;
+	--sidenote-gap: 2rem;
 }
 
 /* Allow margin overflow but keep vertical scrolling */
@@ -11,11 +36,16 @@
 	overflow-x: visible !important;
 }
 
-/* Apply page offset ONLY if sidenotes exist */
-@media (min-width: 1300px) {
-	.markdown-source-view.mod-cm6:has(.sidenote-margin) .cm-scroller {
-		padding-left: var(--page-offset) !important;
-	}
+/* Apply page offset based on mode (not media query) */
+.markdown-source-view.mod-cm6[data-sidenote-mode="compact"]:has(
+		.sidenote-margin
+	)
+	.cm-scroller,
+.markdown-source-view.mod-cm6[data-sidenote-mode="normal"]:has(.sidenote-margin)
+	.cm-scroller,
+.markdown-source-view.mod-cm6[data-sidenote-mode="full"]:has(.sidenote-margin)
+	.cm-scroller {
+	padding-left: var(--page-offset) !important;
 }
 
 /* Prevent clipping by CM layers */
@@ -64,6 +94,18 @@
 	will-change: transform;
 	z-index: 10;
 	pointer-events: auto;
+
+	/* Smooth width transitions */
+	transition:
+		width 0.15s ease-out,
+		left 0.15s ease-out,
+		opacity 0.15s ease-out;
+}
+
+/* Compact mode: smaller font, tighter spacing */
+.markdown-source-view.mod-cm6[data-sidenote-mode="compact"] .sidenote-margin {
+	font-size: 70%;
+	line-height: 1.25;
 }
 
 /* Number prefix inside the sidenote */
@@ -72,9 +114,13 @@
 	font-weight: bold;
 }
 
-/* Hide sidenotes on narrow viewports */
-@media (max-width: 1299px) {
-	.sidenote-margin {
-		display: none;
-	}
+/* Hide sidenotes when mode is hidden */
+.markdown-source-view.mod-cm6[data-sidenote-mode="hidden"] .sidenote-margin {
+	display: none;
+}
+
+/* Also hide with opacity for smoother transitions when near threshold */
+.markdown-source-view.mod-cm6[data-sidenote-mode=""] .sidenote-margin {
+	opacity: 0;
+	pointer-events: none;
 }

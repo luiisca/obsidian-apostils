@@ -2,15 +2,17 @@ import { MarkdownView, Plugin, TFile } from "obsidian";
 
 type CleanupFn = () => void;
 
-// Minimum editor width (in pixels) required to show sidenotes
-// Adjust this value to control when sidenotes appear/hide based on editor width
-const MIN_EDITOR_WIDTH = 1300;
+// Breakpoints for sidenote behavior (in pixels of EDITOR width)
+const SIDENOTE_HIDE_BELOW = 900; // Hide sidenotes entirely
+const SIDENOTE_COMPACT_BELOW = 1100; // Use compact/narrow sidenotes
+const SIDENOTE_FULL_ABOVE = 1400; // Full-width sidenotes
 
 export default class SidenoteCollisionAvoider extends Plugin {
 	private rafId: number | null = null;
 	private cleanups: CleanupFn[] = [];
 	private cmRoot: HTMLElement | null = null;
 	private isMutating = false;
+	private resizeObserver: ResizeObserver | null = null;
 
 	async onload() {
 		this.registerEvent(
@@ -28,6 +30,7 @@ export default class SidenoteCollisionAvoider extends Plugin {
 				this.rebindAndSchedule(),
 			),
 		);
+		// Window resize still useful for edge cases
 		this.registerDomEvent(window, "resize", () => this.scheduleLayout());
 
 		this.rebindAndSchedule();
@@ -37,12 +40,17 @@ export default class SidenoteCollisionAvoider extends Plugin {
 		this.cancelScheduled();
 		this.cleanups.forEach((fn) => fn());
 		this.cleanups = [];
+
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect();
+			this.resizeObserver = null;
+		}
+
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const cmRoot = view?.containerEl.querySelector<HTMLElement>(
 			".markdown-source-view.mod-cm6",
 		);
 		if (cmRoot) {
-			// Clean up injected elements and CSS variables
 			cmRoot
 				.querySelectorAll("span.sidenote-number")
 				.forEach((n) => n.remove());
@@ -50,6 +58,8 @@ export default class SidenoteCollisionAvoider extends Plugin {
 				.querySelectorAll("small.sidenote-margin")
 				.forEach((n) => n.remove());
 			cmRoot.style.removeProperty("--editor-width");
+			cmRoot.style.removeProperty("--sidenote-mode");
+			cmRoot.dataset.sidenoteMode = "";
 		}
 	}
 
@@ -77,6 +87,11 @@ export default class SidenoteCollisionAvoider extends Plugin {
 		this.cleanups.forEach((fn) => fn());
 		this.cleanups = [];
 
+		if (this.resizeObserver) {
+			this.resizeObserver.disconnect();
+			this.resizeObserver = null;
+		}
+
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) return;
 
@@ -87,6 +102,16 @@ export default class SidenoteCollisionAvoider extends Plugin {
 		if (!cmRoot) return;
 
 		this.cmRoot = cmRoot;
+
+		// Use ResizeObserver on the editor container for instant response
+		this.resizeObserver = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				if (entry.target === cmRoot) {
+					this.scheduleLayout();
+				}
+			}
+		});
+		this.resizeObserver.observe(cmRoot);
 
 		const scroller = cmRoot.querySelector<HTMLElement>(".cm-scroller");
 		if (!scroller) return;
@@ -116,11 +141,38 @@ export default class SidenoteCollisionAvoider extends Plugin {
 		const cmRoot = this.cmRoot;
 		if (!cmRoot) return;
 
-		// Measure editor width and set as CSS variable
-		// This updates whenever sidebars open/close
 		const cmRootRect = cmRoot.getBoundingClientRect();
-		cmRoot.style.setProperty("--editor-width", `${cmRootRect.width}px`);
-		console.log(`Set --editor-width to ${cmRootRect.width}px`);
+		const editorWidth = cmRootRect.width;
+
+		// Set CSS variables for width-based calculations
+		cmRoot.style.setProperty("--editor-width", `${editorWidth}px`);
+
+		// Determine sidenote mode based on editor width
+		let mode: "hidden" | "compact" | "normal" | "full";
+		if (editorWidth < SIDENOTE_HIDE_BELOW) {
+			mode = "hidden";
+		} else if (editorWidth < SIDENOTE_COMPACT_BELOW) {
+			mode = "compact";
+		} else if (editorWidth < SIDENOTE_FULL_ABOVE) {
+			mode = "normal";
+		} else {
+			mode = "full";
+		}
+
+		// Set mode as data attribute for CSS to use
+		cmRoot.dataset.sidenoteMode = mode;
+
+		// Calculate a scale factor (0-1) for smooth interpolation
+		// This allows CSS to smoothly scale between breakpoints
+		let scaleFactor = 0;
+		if (editorWidth >= SIDENOTE_HIDE_BELOW) {
+			scaleFactor = Math.min(
+				1,
+				(editorWidth - SIDENOTE_HIDE_BELOW) /
+					(SIDENOTE_FULL_ABOVE - SIDENOTE_HIDE_BELOW),
+			);
+		}
+		cmRoot.style.setProperty("--sidenote-scale", scaleFactor.toFixed(3));
 
 		// Find all sidenote spans that are NOT already wrapped
 		const spans = Array.from(
@@ -131,19 +183,17 @@ export default class SidenoteCollisionAvoider extends Plugin {
 		);
 
 		if (spans.length === 0) {
-			// Even if no new spans, still do collision avoidance on existing ones
 			const existingMargins = Array.from(
 				cmRoot.querySelectorAll<HTMLElement>("small.sidenote-margin"),
 			);
-			if (existingMargins.length > 0) {
+			if (existingMargins.length > 0 && mode !== "hidden") {
 				this.avoidCollisions(existingMargins, 8);
 			}
 			return;
 		}
 
-		// Check editor container width
-		if (cmRootRect.width < MIN_EDITOR_WIDTH) {
-			// Editor too narrow, don't show sidenotes
+		// Don't create sidenotes if hidden
+		if (mode === "hidden") {
 			return;
 		}
 
@@ -152,7 +202,6 @@ export default class SidenoteCollisionAvoider extends Plugin {
 			.map((el) => ({ el, rect: el.getBoundingClientRect() }))
 			.sort((a, b) => a.rect.top - b.rect.top);
 
-		// Get existing sidenote count to continue numbering
 		const existingWrappers = cmRoot.querySelectorAll(".sidenote-number");
 		let n = existingWrappers.length + 1;
 
@@ -163,21 +212,17 @@ export default class SidenoteCollisionAvoider extends Plugin {
 			for (const { el: span } of ordered) {
 				const num = String(n++);
 
-				// Create wrapper span with data attribute
 				const wrapper = document.createElement("span");
 				wrapper.className = "sidenote-number";
 				wrapper.dataset.sidenoteNum = num;
 
-				// Create the actual margin note
 				const margin = document.createElement("small");
 				margin.className = "sidenote-margin";
 				margin.dataset.sidenoteNum = num;
 
-				// Render content with Markdown links
 				const raw = this.normalizeText(span.textContent ?? "");
 				margin.appendChild(this.renderMarkdownLinksToFragment(raw));
 
-				// Wrap the original span
 				span.parentNode?.insertBefore(wrapper, span);
 				wrapper.appendChild(span);
 				wrapper.appendChild(margin);
@@ -188,7 +233,6 @@ export default class SidenoteCollisionAvoider extends Plugin {
 			this.isMutating = false;
 		}
 
-		// Collision avoidance on ALL margin notes
 		const allMargins = Array.from(
 			cmRoot.querySelectorAll<HTMLElement>("small.sidenote-margin"),
 		);
