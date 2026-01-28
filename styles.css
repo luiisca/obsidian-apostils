@@ -1,18 +1,33 @@
 /* === Sidenote layout variables === */
+/* Source view (Live Preview / Edit mode) */
 .markdown-source-view.mod-cm6 {
-	--sidenote-base-width: 10rem; /* Minimum sidenote width */
-	--sidenote-max-extra: 8rem; /* Added to base at full scale (total max = 28rem) */
+	--sidenote-base-width: 10rem;
+	--sidenote-max-extra: 8rem;
 
 	--sidenote-width: calc(
 		var(--sidenote-base-width) +
 			(var(--sidenote-max-extra) * var(--sidenote-scale, 0.5))
 	);
 
-	--sidenote-gap: 2rem; /* Space between sidenote and main text */
+	--sidenote-gap: 2rem;
 	--page-offset: calc(var(--sidenote-width) + var(--sidenote-gap) + 0.5rem);
 }
 
-/* Mode-specific overrides */
+/* Reading view */
+.markdown-reading-view {
+	--sidenote-base-width: 10rem;
+	--sidenote-max-extra: 8rem;
+
+	--sidenote-width: calc(
+		var(--sidenote-base-width) +
+			(var(--sidenote-max-extra) * var(--sidenote-scale, 0.5))
+	);
+
+	--sidenote-gap: 2rem;
+	--page-offset: calc(var(--sidenote-width) + var(--sidenote-gap) + 0.5rem);
+}
+
+/* Mode-specific overrides - Source view */
 .markdown-source-view.mod-cm6[data-sidenote-mode="compact"] {
 	--sidenote-base-width: 8rem;
 	--sidenote-max-extra: 4rem;
@@ -25,20 +40,26 @@
 	--sidenote-gap: 3rem;
 }
 
-/* Allow margin overflow but keep vertical scrolling */
+/* Mode-specific overrides - Reading view */
+.markdown-reading-view[data-sidenote-mode="compact"] {
+	--sidenote-base-width: 8rem;
+	--sidenote-max-extra: 4rem;
+	--sidenote-gap: 1rem;
+}
+
+.markdown-reading-view[data-sidenote-mode="full"] {
+	--sidenote-base-width: 18rem;
+	--sidenote-max-extra: 2rem;
+	--sidenote-gap: 3rem;
+}
+
+/* Allow margin overflow but keep vertical scrolling - Source view */
 .markdown-source-view.mod-cm6 .cm-scroller {
 	overflow-y: auto !important;
 	overflow-x: visible !important;
 }
 
-/* 
- * Apply page offset based on:
- * 1. Document has sidenotes (data-has-sidenotes="true") - scanned from source, not DOM
- * 2. Sidenote mode is not hidden
- * 
- * This ensures consistent offset throughout the entire document,
- * regardless of which sidenotes are currently rendered in the virtualized DOM.
- */
+/* Apply page offset - Source view */
 .markdown-source-view.mod-cm6[data-has-sidenotes="true"][data-sidenote-mode="compact"]
 	.cm-scroller,
 .markdown-source-view.mod-cm6[data-has-sidenotes="true"][data-sidenote-mode="normal"]
@@ -48,7 +69,17 @@
 	padding-left: var(--page-offset) !important;
 }
 
-/* Prevent clipping by CM layers */
+/* Apply page offset - Reading view */
+.markdown-reading-view[data-has-sidenotes="true"][data-sidenote-mode="compact"]
+	.markdown-preview-sizer,
+.markdown-reading-view[data-has-sidenotes="true"][data-sidenote-mode="normal"]
+	.markdown-preview-sizer,
+.markdown-reading-view[data-has-sidenotes="true"][data-sidenote-mode="full"]
+	.markdown-preview-sizer {
+	padding-left: var(--page-offset) !important;
+}
+
+/* Prevent clipping by CM layers - Source view */
 .markdown-source-view.mod-cm6 .cm-editor,
 .markdown-source-view.mod-cm6 .cm-content,
 .markdown-source-view.mod-cm6 .cm-sizer,
@@ -56,12 +87,26 @@
 	overflow: visible !important;
 }
 
-/* Each line is the positioning context */
+/* Each line is the positioning context - Source view */
 .markdown-source-view.mod-cm6 .cm-line {
 	position: relative;
 }
 
-/* Superscript number in the main text */
+/* Positioning context for reading mode */
+.markdown-reading-view p,
+.markdown-reading-view li,
+.markdown-reading-view h1,
+.markdown-reading-view h2,
+.markdown-reading-view h3,
+.markdown-reading-view h4,
+.markdown-reading-view h5,
+.markdown-reading-view h6,
+.markdown-reading-view blockquote,
+.markdown-reading-view .callout {
+	position: relative;
+}
+
+/* Superscript number in the main text - both modes */
 .sidenote-number::after {
 	content: attr(data-sidenote-num);
 	vertical-align: super;
@@ -70,7 +115,7 @@
 	margin-right: 0.4rem;
 }
 
-/* Hide the original span content */
+/* Hide the original span content - both modes */
 .sidenote-number > span.sidenote {
 	display: inline-block;
 	width: 0;
@@ -80,7 +125,7 @@
 	vertical-align: baseline;
 }
 
-/* Sidenote block in the left margin */
+/* Sidenote block in the left margin - both modes */
 .sidenote-margin {
 	position: absolute;
 	top: 0.2em;
@@ -94,33 +139,48 @@
 	will-change: transform;
 	z-index: 10;
 	pointer-events: auto;
-
-	/* Smooth width transitions */
 	transition:
 		width 0.15s ease-out,
 		left 0.15s ease-out,
 		opacity 0.15s ease-out;
 }
 
-/* Compact mode: smaller font, tighter spacing */
+/* Compact mode: smaller font, tighter spacing - Source view */
 .markdown-source-view.mod-cm6[data-sidenote-mode="compact"] .sidenote-margin {
 	font-size: 70%;
 	line-height: 1.25;
 }
 
-/* Number prefix inside the sidenote */
+/* Compact mode: smaller font, tighter spacing - Reading view */
+.markdown-reading-view[data-sidenote-mode="compact"] .sidenote-margin {
+	font-size: 70%;
+	line-height: 1.25;
+}
+
+/* Number prefix inside the sidenote - both modes */
 .sidenote-margin[data-sidenote-num]::before {
 	content: attr(data-sidenote-num) ". ";
 	font-weight: bold;
 }
 
-/* Hide sidenotes when mode is hidden */
+/* Hide sidenotes when mode is hidden - Source view */
 .markdown-source-view.mod-cm6[data-sidenote-mode="hidden"] .sidenote-margin {
 	display: none;
 }
 
-/* Also hide with opacity for smoother transitions when near threshold */
+/* Hide sidenotes when mode is hidden - Reading view */
+.markdown-reading-view[data-sidenote-mode="hidden"] .sidenote-margin {
+	display: none;
+}
+
+/* Also hide with opacity for smoother transitions when near threshold - Source view */
 .markdown-source-view.mod-cm6[data-sidenote-mode=""] .sidenote-margin {
+	opacity: 0;
+	pointer-events: none;
+}
+
+/* Also hide with opacity for smoother transitions when near threshold - Reading view */
+.markdown-reading-view[data-sidenote-mode=""] .sidenote-margin {
 	opacity: 0;
 	pointer-events: none;
 }
