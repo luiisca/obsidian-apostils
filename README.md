@@ -30,8 +30,8 @@ Large Language Models (LLM) were used in the production and editing of this code
 
 ## Other examples of sidenotes in Obsidian
 
-- [crnkv/obsidian-sidenote-auto-adjust-module](https://github.com/crnkv/obsidian-sidenote-auto-adjust-module)
-- [Collapsible Sidenotes using a hacky CSS trick](https://forum.obsidian.md/t/meta-post-common-css-hacks/1978/341)
+- [crnkv/obsidian-sidenote-auto-adjust-module](https://github.com/crnkv/obsidian-sidenote-auto-adjust-module) ([forum post](https://forum.obsidian.md/t/css-snippet-sidenote-auto-adjust-module-four-styles-available/94495))
+- [Collapsible Sidenotes using a CSS trick](https://forum.obsidian.md/t/meta-post-common-css-hacks/1978/341)
 - [Sidenotes Using CSS also](https://scripter.co/sidenotes-using-only-css/)
 - [A sidenote solution similar to Tufte CSS](https://www.kooslooijesteijn.net/blog/sidenotes-without-js)
 - [Obsidian-sidenote-callout](https://github.com/xhuajin/obsidian-sidenote-callout/blob/main/README.md) - I did not use a custom callout like this because I wanted the sidenotes to also be publishable.
