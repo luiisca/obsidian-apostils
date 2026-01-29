@@ -1,90 +1,70 @@
-# Obsidian Sample Plugin
+## Sidenote-helper
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+I first discovered sidenotes, at least in a conscious way, on [Gwern.net](https://gwern.net/sidenote). He was referencing Edward Tufte's conventions.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+My goal is to have the same sidenotes work in both Obsidian and the web published version.
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+Features:
 
-## First time developing plugins?
+- **Sidenotes**: Allows you to write sidenotes which show in the left side margin next to a note's main body
+- Links in sidenotes: The plugin makes sure links in sidenotes appear as links.
+- Superscript numbers are added to the text. .e.g. This text^1 and they will count sequentially
+- Width of sidenotes changes dynamically based on the size of the editor
+- Works in _Editing_ and _Reading_ modes
 
-Quick starting guide for new plugin devs:
+Alternative Plugins:
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+- [SideNote](https://github.com/mofukuru/SideNote) allows you to add comments to a piece of text, and this is viewable in the side panel.
 
-## Releasing new releases
+### AI disclaimer
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+Large Language Models (LLM) were used in the production and editing of this code. While I am comfortable with JavaScript programming, I still struggle to fully understand programming for Obsidian. This plugin just solved a problem for me. I wanted this ability and I couldn't find a good solution for it.
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+## Known issues
 
-## Adding your plugin to the community plugin list
+- External links in sidenotes do not currently show the familiar external link icon.
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+## Goals
 
-## How to use
+- **Optional Markdown style syntax:** I'd like an optional Markdown-style mode to enable some sort of coded sidenote like `;;sidenote text;;` or `&&sidenote text&&`. Currently, it only responds to this one HTML tag `<span class="sidenote">`. The benefit of HTML syntax is that it can be made to work in web-published notes as well.
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+## Other examples of sidenotes in Obsidian
 
-## Manually installing the plugin
+- [crnkv/obsidian-sidenote-auto-adjust-module](https://github.com/crnkv/obsidian-sidenote-auto-adjust-module)
+- [Collapsible Sidenotes using a hacky CSS trick](https://forum.obsidian.md/t/meta-post-common-css-hacks/1978/341)
+- [Sidenotes Using CSS also](https://scripter.co/sidenotes-using-only-css/)
+- [A sidenote solution similar to Tufte CSS](https://www.kooslooijesteijn.net/blog/sidenotes-without-js)
+- [Obsidian-sidenote-callout](https://github.com/xhuajin/obsidian-sidenote-callout/blob/main/README.md) - I did not use a custom callout like this because I wanted the sidenotes to also be publishable.
+- [Tufte style sidenotes](https://medium.com/obsidian-observer/tufte-style-sidenotes-in-obsidian-89b0a785bc54)
+- [Collapsible inline notes and sidenotes](https://forum.obsidian.md/t/collapsible-inline-notes-and-sidenotes/31909)
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+## Setup
 
-## Improve code quality with eslint
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
+1. Add the plugin to Obsidian. If copying manually from this repo, you can copy the contents of `/sidenotes-helper/` into `your-vault/.obsidian/plugins/sidenotes-helper`.
+2. If copying manually, restart Obsidian and then enable the plugin in **Settings**.
 
-## Funding URL
+## Use
 
-You can include funding URLs where people who use your plugin can financially support it.
+Create a sidenote using this:
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
-
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
+```html
+Normal note text, not a sidenote<span class="sidenote"
+	>This is a sidenote. See [this link](http://example.com).</span
+>
 ```
 
-If you have multiple URLs, you can also do:
+I set up a snippet that inserts the basic bits so that I don't have to type all this HTML. There are Obsidian snippet plugins.
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
+I use [Raycast](https://www.raycast.com/) for MacOS where I've made this snippet:
+
+```html
+<span class="sidenote">{cursor}</span>
 ```
 
-## API Documentation
+When I type the keyword `!sidenote` Raycast inserts the snippet.
 
-See https://docs.obsidian.md
+## Web Publishing
+
+I use [Digital Garden](https://github.com/oleeskild/Obsidian-Digital-Garden) to publish a subset of my notes to a website. In the framework Digital Garden has set up, a CSS file called `custom-styles.css` is where one adds any CSS to modify the default styles.
+
+The snippet of CSS I've been using for web publishing is located in `/digital-garden/custom-styles.css`.
