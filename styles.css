@@ -113,7 +113,7 @@
 
 .sidenote-number::after {
 	content: $ {
-		s.showsidenotenumbers? "attr(data-sidenote-num)" : "none";
+		s.showsidenotenumbers?"attr(data-sidenote-num)" : "none";
 	}
 	vertical-align: baseline;
 	position: relative;
@@ -152,6 +152,23 @@
 		width 0.15s ease-out,
 		left 0.15s ease-out,
 		opacity 0.15s ease-out;
+}
+
+/* Editable sidenote styling */
+.sidenote-margin[data-editing="true"] {
+	background: var(--background-modifier-form-field);
+	border-radius: 4px;
+	padding: 4px 6px;
+	outline: 2px solid var(--interactive-accent);
+	cursor: text;
+}
+
+.sidenote-margin[data-editing="true"]::before {
+	display: none;
+}
+
+.sidenote-margin[contenteditable="true"] {
+	white-space: pre-wrap;
 }
 
 /* Compact mode: smaller font, tighter spacing - Source view */

@@ -1137,12 +1137,13 @@ export default class SidenotePlugin extends Plugin {
 					el,
 					rect: el.getBoundingClientRect(),
 					num: numberAssignments.get(el) ?? 0,
+					docPos,
 				}))
 				.sort((a, b) => a.rect.top - b.rect.top);
 
 			this.isMutating = true;
 			try {
-				for (const { el: span, num } of ordered) {
+				for (const { el: span, num, docPos } of ordered) {
 					const numStr = this.formatNumber(num);
 
 					const wrapper = document.createElement("span");
@@ -1155,6 +1156,9 @@ export default class SidenotePlugin extends Plugin {
 
 					const raw = this.normalizeText(span.textContent ?? "");
 					margin.appendChild(this.renderLinksToFragment(raw));
+
+					// Make margin editable and set up edit handling
+					this.setupMarginEditing(margin, span, docPos);
 
 					span.parentNode?.insertBefore(wrapper, span);
 					wrapper.appendChild(span);
@@ -1307,6 +1311,195 @@ export default class SidenotePlugin extends Plugin {
 		}
 
 		return frag;
+	}
+
+	// ==================== Margin Editing ====================
+
+	/**
+	 * Set up a margin element to be editable in place.
+	 * When clicked, it becomes editable. On blur, changes are saved to the source.
+	 */
+	private setupMarginEditing(
+		margin: HTMLElement,
+		sourceSpan: HTMLElement,
+		docPos: number | null,
+	) {
+		// Store reference to source span
+		margin.dataset.editing = "false";
+
+		// Prevent click from propagating to editor (which would focus the source)
+		margin.addEventListener("mousedown", (e) => {
+			e.stopPropagation();
+		});
+
+		margin.addEventListener("click", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+
+			if (margin.dataset.editing === "true") return;
+
+			this.startMarginEdit(margin, sourceSpan, docPos);
+		});
+	}
+
+	/**
+	 * Start editing a margin sidenote in place.
+	 */
+	private startMarginEdit(
+		margin: HTMLElement,
+		sourceSpan: HTMLElement,
+		docPos: number | null,
+	) {
+		margin.dataset.editing = "true";
+
+		// Get the raw text content (without the number prefix)
+		const currentText = sourceSpan.textContent ?? "";
+
+		// Clear margin and make it a simple text editor
+		margin.innerHTML = "";
+		margin.contentEditable = "true";
+		margin.textContent = currentText;
+		margin.focus();
+
+		// Select all text
+		const selection = window.getSelection();
+		const range = document.createRange();
+		range.selectNodeContents(margin);
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+
+		// Handle blur (save changes)
+		const onBlur = () => {
+			this.finishMarginEdit(margin, sourceSpan, docPos);
+			margin.removeEventListener("blur", onBlur);
+			margin.removeEventListener("keydown", onKeydown);
+		};
+
+		// Handle keyboard
+		const onKeydown = (e: KeyboardEvent) => {
+			if (e.key === "Enter" && !e.shiftKey) {
+				e.preventDefault();
+				margin.blur();
+			} else if (e.key === "Escape") {
+				e.preventDefault();
+				// Restore original content without saving
+				margin.dataset.editing = "false";
+				margin.contentEditable = "false";
+				margin.innerHTML = "";
+				margin.appendChild(
+					this.renderLinksToFragment(
+						this.normalizeText(sourceSpan.textContent ?? ""),
+					),
+				);
+				margin.removeEventListener("blur", onBlur);
+				margin.removeEventListener("keydown", onKeydown);
+			}
+		};
+
+		margin.addEventListener("blur", onBlur);
+		margin.addEventListener("keydown", onKeydown);
+	}
+
+	/**
+	 * Finish editing and save changes to the source document.
+	 */
+	private finishMarginEdit(
+		margin: HTMLElement,
+		sourceSpan: HTMLElement,
+		docPos: number | null,
+	) {
+		const newText = margin.textContent ?? "";
+		const oldText = sourceSpan.textContent ?? "";
+
+		margin.dataset.editing = "false";
+		margin.contentEditable = "false";
+
+		// If no change, just restore the rendered content
+		if (newText === oldText) {
+			margin.innerHTML = "";
+			margin.appendChild(
+				this.renderLinksToFragment(this.normalizeText(newText)),
+			);
+			return;
+		}
+
+		// Update the source document
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) return;
+
+		const editor = view.editor;
+		if (!editor) return;
+
+		const content = editor.getValue();
+
+		// Find and replace the sidenote in the source
+		// We need to find the specific sidenote span that contains oldText
+		const sidenoteRegex =
+			/<span\s+class\s*=\s*["']sidenote["'][^>]*>([\s\S]*?)<\/span>/gi;
+
+		let match: RegExpExecArray | null;
+		let found = false;
+		let newContent = content;
+
+		// If we have a document position, use it to find the right sidenote
+		if (docPos !== null) {
+			// Convert docPos back to approximate character position
+			const approxCharPos = Math.floor(docPos / 10000);
+
+			while ((match = sidenoteRegex.exec(content)) !== null) {
+				const matchStart = match.index;
+				const matchContent = match[1] ?? "";
+
+				// Check if this match is close to our position and has matching content
+				if (
+					Math.abs(matchStart - approxCharPos) < 100 &&
+					this.normalizeText(matchContent) ===
+						this.normalizeText(oldText)
+				) {
+					// Replace this specific sidenote
+					const before = content.slice(0, match.index);
+					const after = content.slice(match.index + match[0].length);
+					const newSpan = `<span class="sidenote">${newText}</span>`;
+					newContent = before + newSpan + after;
+					found = true;
+					break;
+				}
+			}
+		}
+
+		// Fallback: find by content match
+		if (!found) {
+			sidenoteRegex.lastIndex = 0;
+			while ((match = sidenoteRegex.exec(content)) !== null) {
+				const matchContent = match[1] ?? "";
+				if (
+					this.normalizeText(matchContent) ===
+					this.normalizeText(oldText)
+				) {
+					const before = content.slice(0, match.index);
+					const after = content.slice(match.index + match[0].length);
+					const newSpan = `<span class="sidenote">${newText}</span>`;
+					newContent = before + newSpan + after;
+					found = true;
+					break;
+				}
+			}
+		}
+
+		if (found && newContent !== content) {
+			// Update the editor content
+			this.isMutating = true;
+			editor.setValue(newContent);
+			this.isMutating = false;
+
+			// The editor-change event will trigger a re-layout
+		} else {
+			// Couldn't find the sidenote to update, just restore the margin display
+			margin.innerHTML = "";
+			margin.appendChild(
+				this.renderLinksToFragment(this.normalizeText(newText)),
+			);
+		}
 	}
 
 	// ==================== Collision Avoidance ====================
