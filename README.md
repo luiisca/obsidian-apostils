@@ -8,6 +8,8 @@ My goal is to have the same sidenotes work in both Obsidian and the web publishe
 
 ### Features:
 
+This is very new so I consider this still in a testing phase.
+
 - **Sidenotes**: Allows you to write sidenotes which show in the left side margin next to a note’s main body. Because these are meant to show in the margins, one can’t really fully use this in mobile.
 - **Customize**:
 	- Show sidenotes in left or right margin
@@ -41,8 +43,7 @@ Large Language Models (LLM) were used in the production and editing of this code
 
 ## Goals
 
-This is very new so I consider this still a test.
-- **Optional Markdown style syntax:** I'd like an optional Markdown-style mode to enable some sort of coded sidenote like `;;sidenote text;;` or `&&sidenote text&&`. Currently, it only responds to this one HTML tag `<span class="sidenote">`. The benefit of HTML syntax is that it can be made to work in web-published notes as well.
+- **Optional Markdown style syntax:** I'd like an optional Markdown-style mode to enable some sort of coded sidenote like `;;sidenote text;;` or `&&sidenote text&&`. This wouldn't really translate to web-published notes (which I want) but it's an option someone might like. Currently, it only works with `<span class="sidenote">` which is
 
 ## Setup
 
