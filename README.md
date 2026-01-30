@@ -47,8 +47,7 @@ Large Language Models (LLM) were used in the production and editing of this code
 Create a sidenote using this:
 
 ```html
-Normal note text, not a sidenote<span class="sidenote">This is a sidenote. See [this link](http://example.com).</span
->
+Normal note text, not a sidenote<span class="sidenote">This is a sidenote. See [this link](http://example.com).</span>
 ```
 
 I set up a snippet that inserts the basic bits so that I don't have to type all this HTML. There are Obsidian snippet plugins.
