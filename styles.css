@@ -10,7 +10,7 @@
 	);
 
 	--sidenote-gap: 2rem;
-	--page-offset: calc((var(--sidenote-width) + var(--sidenote-gap)) * 0.5);
+	--page-offset: calc((var(--sidenote-width) + var(--sidenote-gap)) * 0.8);
 }
 
 /* Reading view */
@@ -24,7 +24,7 @@
 	);
 
 	--sidenote-gap: 2rem;
-	--page-offset: calc((var(--sidenote-width) + var(--sidenote-gap)) * 0.5);
+	--page-offset: calc((var(--sidenote-width) + var(--sidenote-gap)) * 0.8);
 }
 
 /* Mode-specific overrides - Source view */
@@ -107,12 +107,21 @@
 }
 
 /* Superscript number in the main text - both modes */
+.sidenote-number {
+	line-height: 0;
+}
+
 .sidenote-number::after {
-	content: attr(data-sidenote-num);
-	vertical-align: super;
+	content: $ {
+		s.showsidenotenumbers? "attr(data-sidenote-num)" : "none";
+	}
+	vertical-align: baseline;
+	position: relative;
+	top: -0.5em;
 	font-size: 0.7em;
 	font-weight: bold;
-	margin-right: 0.4rem;
+	margin-right: 0.2rem;
+	line-height: 0;
 }
 
 /* Hide the original span content - both modes */
