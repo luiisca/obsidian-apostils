@@ -8,21 +8,25 @@ My goal is to have the same sidenotes work in both Obsidian and the web publishe
 
 ### Features:
 
-This is very new so I consider this still in a testing phase.
-
-- **Sidenotes**: Allows you to write sidenotes which show in the left side margin next to a note’s main body. Because these are meant to show in the margins, one can’t really fully use this in mobile.
+- **Sidenotes**: Create a sidenote using an HTML tag. Sidenotes then display in the margin of a note
+-  **They are editable in the margin**. Click on it, edit, and press enter.
 - **Customize**:
 	- Show sidenotes in left or right margin
 	- Arabic numbers, Roman, letters, or no numbers
-- 	Customize spacing to tweak how it takes up space in the margin
-- 	Customize font size, line height, text alignment
+	- Customize spacing to tweak how it takes up space in the margin
+	- Customize font size, line height, text alignment
+	- **Superscript numbers** can be added to the text. The numbers increment automatically.
 - **Links in sidenotes**: The plugin makes sure links in sidenotes appear as links.
-- **Superscript numbers** can be added to the text. The numbers increment automatically.
 - **Dynamic styling**: Font size shrinks as horizontal space get smaller. At a certain breakpoint, sidenotes hide when a window gets too skinny.
+- Works in _Editing_ and _Reading_ modes
 
-Works in Editing and Reading modes
+### Goal Features:
 
-### Alternatives:
+- **Optional Markdown style syntax:** I'd like an optional Markdown-style mode to enable some sort of coded sidenote like `;;sidenote text;;` or `&&sidenote text&&`. Currently, it only responds to this one HTML tag `<span class="sidenote">`. The benefit of HTML syntax is that it can be made to work in web-published notes as well.
+- Add a command for "Create a new sidenote" so it can be hotkeyed.
+
+## Alternatives:
+
 These are some other strategies I've seen for sidenotes in Obsidian. 
 - [SideNote Plugin](https://github.com/mofukuru/SideNote) allows you to add comments to a piece of text, and this is viewable in the side panel.
 - [crnkv/obsidian-sidenote-auto-adjust-module](https://github.com/crnkv/obsidian-sidenote-auto-adjust-module) ([forum post](https://forum.obsidian.md/t/css-snippet-sidenote-auto-adjust-module-four-styles-available/94495))
