@@ -116,6 +116,35 @@ export default class SidenotePlugin extends Plugin {
 		this.injectStyles();
 		this.setupVisibilityObserver();
 
+		// Add command to insert sidenote
+
+		this.addCommand({
+			id: "insert-sidenote",
+			name: "Insert sidenote",
+			editorCallback: (editor) => {
+				const cursor = editor.getCursor();
+				const selectedText = editor.getSelection();
+
+				if (selectedText) {
+					// Wrap selected text in sidenote tags
+					editor.replaceSelection(
+						`<span class="sidenote">${selectedText}</span>`,
+					);
+				} else {
+					// Insert empty sidenote tags and place cursor inside
+					const sidenoteText = '<span class="sidenote"></span>';
+					editor.replaceRange(sidenoteText, cursor);
+
+					// Move cursor to between the tags (before </span>)
+					const newCursor = {
+						line: cursor.line,
+						ch: cursor.ch + '<span class="sidenote">'.length,
+					};
+					editor.setCursor(newCursor);
+				}
+			},
+		});
+
 		this.registerMarkdownPostProcessor((element, context) => {
 			const sidenoteSpans =
 				element.querySelectorAll<HTMLElement>("span.sidenote");
@@ -651,9 +680,8 @@ export default class SidenotePlugin extends Plugin {
 				container.querySelectorAll<HTMLElement>("span.sidenote"),
 			).filter(
 				(span) =>
-					!span.parentElement?.classList.contains(
-						"sidenote-number",
-					) && !processedSidenotes.has(span),
+					!span.parentElement?.classList.contains("sidenote-number") &&
+					!processedSidenotes.has(span),
 			);
 
 			for (const el of spans) {
@@ -789,9 +817,7 @@ export default class SidenotePlugin extends Plugin {
 
 	private getHeadingId(heading: HTMLElement): string {
 		return (
-			heading.textContent?.trim() ||
-			heading.id ||
-			Math.random().toString()
+			heading.textContent?.trim() || heading.id || Math.random().toString()
 		);
 	}
 
@@ -834,9 +860,7 @@ export default class SidenotePlugin extends Plugin {
 		if (isInternalLink) {
 			// Get the target from data-href (Obsidian's way) or href
 			const target =
-				link.getAttribute("data-href") ||
-				link.getAttribute("href") ||
-				"";
+				link.getAttribute("data-href") || link.getAttribute("href") || "";
 
 			// Ensure it has the internal-link class
 			link.classList.add("internal-link");
@@ -892,7 +916,10 @@ export default class SidenotePlugin extends Plugin {
 		if (width < s.hideBelow) {
 			return 0;
 		}
-		return Math.min(1, (width - s.hideBelow) / (s.fullAbove - s.hideBelow));
+		return Math.min(
+			1,
+			(width - s.hideBelow) / (s.fullAbove - s.hideBelow),
+		);
 	}
 
 	// ==================== Reading Mode Layout ====================
@@ -948,13 +975,19 @@ export default class SidenotePlugin extends Plugin {
 
 		// Measure and sort by position
 		const measured = margins
-			.map((el) => ({ el, rect: el.getBoundingClientRect() }))
+			.map((el) => ({
+				el,
+				rect: el.getBoundingClientRect(),
+			}))
 			.filter((item) => item.rect.height > 0)
 			.sort((a, b) => a.rect.top - b.rect.top);
 
 		if (measured.length === 0) return;
 
-		const updates: { el: HTMLElement; shift: number }[] = [];
+		const updates: {
+			el: HTMLElement;
+			shift: number;
+		}[] = [];
 		let bottom = -Infinity;
 
 		for (const { el, rect } of measured) {
@@ -1000,8 +1033,7 @@ export default class SidenotePlugin extends Plugin {
 
 		// Count total sidenotes in document for validation
 		if (this.needsFullRenumber) {
-			this.totalSidenotesInDocument =
-				this.countSidenotesInSource(content);
+			this.totalSidenotesInDocument = this.countSidenotesInSource(content);
 		}
 
 		if (this.cmRoot) {
@@ -1176,7 +1208,10 @@ export default class SidenotePlugin extends Plugin {
 	 * in the order they appear (sorted by position).
 	 */
 	private assignSidenoteNumbers(
-		spans: { el: HTMLElement; docPos: number | null }[],
+		spans: {
+			el: HTMLElement;
+			docPos: number | null;
+		}[],
 	): Map<HTMLElement, number> {
 		const assignments = new Map<HTMLElement, number>();
 
@@ -1234,8 +1269,7 @@ export default class SidenotePlugin extends Plugin {
 		const unwrappedSpans = Array.from(
 			cmRoot.querySelectorAll<HTMLElement>("span.sidenote"),
 		).filter(
-			(span) =>
-				!span.parentElement?.classList.contains("sidenote-number"),
+			(span) => !span.parentElement?.classList.contains("sidenote-number"),
 		);
 
 		// If there are new sidenotes to process, we need to renumber everything
@@ -1379,9 +1413,7 @@ export default class SidenotePlugin extends Plugin {
 
 			// Add text before the match
 			if (start > last) {
-				frag.appendChild(
-					document.createTextNode(text.slice(last, start)),
-				);
+				frag.appendChild(document.createTextNode(text.slice(last, start)));
 			}
 
 			if (m[1] !== undefined && m[2] !== undefined) {
@@ -1581,8 +1613,7 @@ export default class SidenotePlugin extends Plugin {
 				// Check if this match is close to our position and has matching content
 				if (
 					Math.abs(matchStart - approxCharPos) < 100 &&
-					this.normalizeText(matchContent) ===
-						this.normalizeText(oldText)
+					this.normalizeText(matchContent) === this.normalizeText(oldText)
 				) {
 					// Replace this specific sidenote
 					const before = content.slice(0, match.index);
@@ -1601,8 +1632,7 @@ export default class SidenotePlugin extends Plugin {
 			while ((match = sidenoteRegex.exec(content)) !== null) {
 				const matchContent = match[1] ?? "";
 				if (
-					this.normalizeText(matchContent) ===
-					this.normalizeText(oldText)
+					this.normalizeText(matchContent) === this.normalizeText(oldText)
 				) {
 					const before = content.slice(0, match.index);
 					const after = content.slice(match.index + match[0].length);
@@ -1650,13 +1680,19 @@ export default class SidenotePlugin extends Plugin {
 
 		// Measure and sort
 		const measured = nodes
-			.map((el) => ({ el, rect: el.getBoundingClientRect() }))
+			.map((el) => ({
+				el,
+				rect: el.getBoundingClientRect(),
+			}))
 			.filter((item) => item.rect.height > 0) // Filter out hidden/zero-height elements
 			.sort((a, b) => a.rect.top - b.rect.top);
 
 		if (measured.length === 0) return;
 
-		const updates: { el: HTMLElement; shift: number }[] = [];
+		const updates: {
+			el: HTMLElement;
+			shift: number;
+		}[] = [];
 		let bottom = -Infinity;
 
 		for (const { el, rect } of measured) {
@@ -1679,9 +1715,7 @@ export default class SidenotePlugin extends Plugin {
 
 		// Update hash after successful collision avoidance
 		this.lastCollisionHash = measured
-			.map(
-				(m) => `${Math.round(m.rect.top)}:${Math.round(m.rect.height)}`,
-			)
+			.map((m) => `${Math.round(m.rect.top)}:${Math.round(m.rect.height)}`)
 			.join("|");
 	}
 
@@ -1692,9 +1726,7 @@ export default class SidenotePlugin extends Plugin {
 		// Handle source view
 		if (this.cmRoot) {
 			const sourceMargins = Array.from(
-				this.cmRoot.querySelectorAll<HTMLElement>(
-					"small.sidenote-margin",
-				),
+				this.cmRoot.querySelectorAll<HTMLElement>("small.sidenote-margin"),
 			);
 			if (sourceMargins.length > 0) {
 				this.avoidCollisions(
@@ -1731,7 +1763,9 @@ class SidenoteSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Display" });
+		containerEl.createEl("h2", {
+			text: "Display",
+		});
 
 		new Setting(containerEl)
 			.setName("Sidenote position")
@@ -1776,7 +1810,9 @@ class SidenoteSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		containerEl.createEl("h2", { text: "Width & Spacing" });
+		containerEl.createEl("h2", {
+			text: "Width & Spacing",
+		});
 
 		new Setting(containerEl)
 			.setName("Minimum sidenote width")
@@ -1838,7 +1874,9 @@ class SidenoteSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		containerEl.createEl("h2", { text: "Breakpoints" });
+		containerEl.createEl("h2", {
+			text: "Breakpoints",
+		});
 
 		new Setting(containerEl)
 			.setName("Hide below width")
@@ -1890,7 +1928,9 @@ class SidenoteSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		containerEl.createEl("h2", { text: "Typography" });
+		containerEl.createEl("h2", {
+			text: "Typography",
+		});
 
 		new Setting(containerEl)
 			.setName("Font size")
@@ -1949,7 +1989,9 @@ class SidenoteSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		containerEl.createEl("h2", { text: "Behavior" });
+		containerEl.createEl("h2", {
+			text: "Behavior",
+		});
 
 		new Setting(containerEl)
 			.setName("Collision spacing")
