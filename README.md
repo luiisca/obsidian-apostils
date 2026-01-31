@@ -1,4 +1,4 @@
-## Sidenote-helper
+# Sidenote-helper
 
 I first discovered sidenotes, at least in a conscious way, on [Gwern.net](https://gwern.net/sidenote). He was referencing Edward Tufte's conventions.
 
@@ -43,11 +43,7 @@ Large Language Models (LLM) were used in the production and editing of this code
 
 ## Known issues
 
-- Numbers may not update immediately when sequencing changes. For example, if the first sidenote is removed, the second one becomes the first but may still be annotated 2. Reopening the note fixes it.
-
-## Goals
-
-- **Optional Markdown style syntax:** I'd like an optional Markdown-style mode to enable some sort of coded sidenote like `;;sidenote text;;` or `&&sidenote text&&`. This wouldn't really translate to web-published notes (which I want) but it's an option someone might like. Currently, it only works with `<span class="sidenote">` which is
+- ~~Numbers may not update immediately when sequencing changes. For example, if the first sidenote is removed, the second one becomes the first but may still be annotated 2. Reopening the note fixes it~~ (Fixed 1/30/26)
 
 ## Setup
 
