@@ -2365,31 +2365,31 @@ export default class SidenotePlugin extends Plugin {
 	 * This unwraps the original span.sidenote elements and footnote ref spans.
 	 */
 	private removeAllSidenoteMarkup(root: HTMLElement) {
-		// Find all sidenote-number wrappers
 		const wrappers = root.querySelectorAll<HTMLElement>(
 			"span.sidenote-number",
 		);
 
 		for (const wrapper of Array.from(wrappers)) {
-			// Find the original sidenote span inside
 			const sidenoteSpan =
 				wrapper.querySelector<HTMLElement>("span.sidenote");
 
-			// Remove the margin element
 			const margin = wrapper.querySelector<HTMLElement>(
 				"small.sidenote-margin",
 			);
 			if (margin) {
+				// Call cleanup if it exists
+				if ((margin as any)._sidenoteCleanup) {
+					(margin as any)._sidenoteCleanup();
+					delete (margin as any)._sidenoteCleanup;
+				}
 				this.unobserveSidenoteVisibility(margin);
 				margin.remove();
 			}
 
-			// Unwrap: move the sidenote span back to where the wrapper was
 			if (sidenoteSpan && wrapper.parentNode) {
 				wrapper.parentNode.insertBefore(sidenoteSpan, wrapper);
 			}
 
-			// Remove the now-empty wrapper
 			wrapper.remove();
 		}
 	}
