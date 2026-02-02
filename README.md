@@ -33,6 +33,7 @@ _An optional style that highlights references. Useful in long texts_
 
 ### Known issues
 
+- Sidenotes seem to collide with each other in certain circumstances. So far I just see it in Reading Mode.
 - ~~Numbers may not update immediately when sequencing changes. For example, if the first sidenote is removed, the second one becomes the first but may still be annotated 2. Reopening the note fixes it~~ (Fixed 1/30/26)
 - ~~The cursor is brought to the top of the note after editing in the margin, if one edits/deletes the content in the note.~~ (Fixed 1/31/26)
 - ~~When editing sidenotes in the margin, after pressing enter, the wrong sidenote may get updated if two sidenotes have the same text~~ (Fixed 1/31/26).

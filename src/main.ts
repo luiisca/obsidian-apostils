@@ -122,15 +122,13 @@ export default class SidenotePlugin extends Plugin {
 	private lastSidenoteCount: number = 0;
 	private lastMode: string = "";
 
-	// Performance: Collision avoidance caching
-	private lastCollisionHash: string = "";
-
 	// Performance: Visible sidenotes tracking
 	private visibilityObserver: IntersectionObserver | null = null;
 	private visibleSidenotes: Set<HTMLElement> = new Set();
 
 	private totalSidenotesInDocument = 0;
 	private isEditingMargin = false;
+	private readingModeScrollTimer: number | null = null;
 
 	async onload() {
 		await this.loadSettings();
@@ -219,7 +217,7 @@ export default class SidenotePlugin extends Plugin {
 				this.scanDocumentForSidenotes();
 				this.needsFullRenumber = true;
 				this.invalidateLayoutCache();
-				this.lastCollisionHash = "";
+				// this.lastCollisionHash = "";
 				this.scheduleLayoutDebounced(100);
 			}),
 		);
@@ -250,6 +248,12 @@ export default class SidenotePlugin extends Plugin {
 		if (this.styleEl) {
 			this.styleEl.remove();
 			this.styleEl = null;
+		}
+
+		// Clean up reading mode scroll timer
+		if (this.readingModeScrollTimer !== null) {
+			window.clearTimeout(this.readingModeScrollTimer);
+			this.readingModeScrollTimer = null;
 		}
 
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -389,7 +393,7 @@ export default class SidenotePlugin extends Plugin {
 		this.lastLayoutWidth = 0;
 		this.lastSidenoteCount = 0;
 		this.lastMode = "";
-		this.lastCollisionHash = "";
+		// this.lastCollisionHash = "";
 	}
 
 	private scheduleLayoutDebounced(delay: number = 50) {
@@ -451,14 +455,6 @@ export default class SidenotePlugin extends Plugin {
 				threshold: 0,
 			},
 		);
-	}
-
-	private scheduleCollisionUpdate() {
-		if (this.rafId !== null) return;
-		this.rafId = requestAnimationFrame(() => {
-			this.rafId = null;
-			this.updateVisibleCollisions();
-		});
 	}
 
 	private observeSidenoteVisibility(margin: HTMLElement) {
@@ -801,18 +797,18 @@ export default class SidenotePlugin extends Plugin {
         }
         
         .sidenote-margin {
-            position: absolute;
-            top: 0.2em;
-            width: var(--sidenote-width);
-            font-size: ${s.fontSize}%;
-            line-height: ${s.lineHeight};
-            overflow-wrap: break-word;
-            transform: translateY(var(--sidenote-shift, 0px));
-            will-change: transform;
-            z-index: 10;
-            pointer-events: auto;
-            ${transitionRule}
-        }
+					position: absolute;
+					top: 0.2em;
+					width: var(--sidenote-width);
+					font-size: ${s.fontSize}%;
+					line-height: ${s.lineHeight};
+					overflow-wrap: break-word;
+					transform: translateY(var(--sidenote-shift, 0px));
+					will-change: transform;
+					z-index: 10;
+					pointer-events: auto;
+					${transitionRule}
+			}
         
         .markdown-source-view.mod-cm6[data-sidenote-mode="compact"] .sidenote-margin,
         .markdown-reading-view[data-sidenote-mode="compact"] .sidenote-margin {
@@ -820,6 +816,12 @@ export default class SidenotePlugin extends Plugin {
             line-height: ${Math.max(s.lineHeight - 0.1, 1.1)};
         }
         
+				/* Ensure margins don't overlap during transition */
+				.markdown-reading-view .sidenote-margin,
+				.markdown-source-view.mod-cm6 .sidenote-margin {
+						isolation: isolate;
+				}
+						
         .markdown-source-view.mod-cm6[data-sidenote-mode="hidden"] .sidenote-margin,
         .markdown-reading-view[data-sidenote-mode="hidden"] .sidenote-margin {
             display: none;
@@ -1146,11 +1148,53 @@ export default class SidenotePlugin extends Plugin {
 		}
 
 		// Run collision avoidance after DOM is fully settled
-		// Use setTimeout to ensure layout is complete
-		setTimeout(() => {
-			this.avoidCollisionsInReadingMode(readingRoot);
-		}, 50);
+		// Chain multiple RAFs to ensure layout is complete
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				// Double-check elements are still valid
+				if (!readingRoot.isConnected) return;
+
+				this.resolveCollisions(
+					marginNotes.filter((m) => m.isConnected),
+					this.settings.collisionSpacing,
+				);
+			});
+		});
 	}
+
+	/**
+	 * Schedule collision avoidance for reading mode with proper timing.
+	 * Uses multiple techniques to ensure layout is complete before measuring.
+	 */
+	private scheduleReadingModeCollisionAvoidance(
+		readingRoot: HTMLElement,
+		marginNotes: HTMLElement[],
+	) {
+		// Cancel any pending collision update
+		if (this.rafId !== null) {
+			cancelAnimationFrame(this.rafId);
+			this.rafId = null;
+		}
+
+		// Use a combination of RAFs and timeout to ensure layout is complete
+		// First RAF: browser has accepted our DOM changes
+		requestAnimationFrame(() => {
+			// Second RAF: browser has likely computed styles
+			requestAnimationFrame(() => {
+				// Short timeout: ensures any pending layout is flushed
+				setTimeout(() => {
+					// Verify elements are still in DOM
+					if (!readingRoot.isConnected) return;
+
+					const validMargins = marginNotes.filter((m) => m.isConnected);
+					if (validMargins.length === 0) return;
+
+					this.avoidCollisionsInReadingMode(readingRoot);
+				}, 20);
+			});
+		});
+	}
+
 	/**
 	 * Remove all sidenote markup from reading mode to allow fresh processing.
 	 */
@@ -1508,68 +1552,13 @@ export default class SidenotePlugin extends Plugin {
 				scaleFactor.toFixed(3),
 			);
 
-			// Run collision avoidance for reading mode
-			this.avoidCollisionsInReadingMode(readingRoot);
-		});
-	}
-
-	/**
-	 * Run collision avoidance specifically for reading mode sidenotes.
-	 */
-	private avoidCollisionsInReadingMode(readingRoot: HTMLElement) {
-		const margins = Array.from(
-			readingRoot.querySelectorAll<HTMLElement>("small.sidenote-margin"),
-		);
-
-		if (margins.length === 0) return;
-
-		// Reset all shifts first
-		for (const margin of margins) {
-			margin.style.setProperty("--sidenote-shift", "0px");
-		}
-
-		// Force reflow to get accurate measurements
-		void readingRoot.offsetHeight;
-
-		// Measure positions after reset
-		const measured = margins
-			.map((el) => {
-				const rect = el.getBoundingClientRect();
-				// Get the wrapper's position as the "anchor" point
-				const wrapper = el.closest(".sidenote-number");
-				const wrapperRect = wrapper?.getBoundingClientRect();
-				return {
-					el,
-					rect,
-					anchorTop: wrapperRect?.top ?? rect.top,
-				};
-			})
-			.filter((item) => item.rect.height > 0)
-			.sort((a, b) => a.anchorTop - b.anchorTop);
-
-		if (measured.length === 0) return;
-
-		const spacing = this.settings.collisionSpacing;
-		let previousBottom = -Infinity;
-
-		for (const { el, rect, anchorTop } of measured) {
-			// The margin wants to be at anchorTop (aligned with its reference)
-			// But it can't overlap with the previous margin
-			const minTop =
-				previousBottom === -Infinity
-					? anchorTop
-					: previousBottom + spacing;
-
-			const actualTop = Math.max(anchorTop, minTop);
-			const shift = actualTop - anchorTop;
-
-			if (shift > 0.5) {
-				el.style.setProperty("--sidenote-shift", `${shift}px`);
+			// Run collision avoidance for reading mode if not hidden
+			if (mode !== "hidden") {
+				requestAnimationFrame(() => {
+					this.updateReadingModeCollisions();
+				});
 			}
-
-			// Update previousBottom based on where this margin actually ends up
-			previousBottom = actualTop + rect.height;
-		}
+		});
 	}
 
 	// ==================== Document Scanning ====================
@@ -1825,6 +1814,32 @@ export default class SidenotePlugin extends Plugin {
 			this.resizeObserver.observe(readingRoot);
 			readingRoot.dataset.sidenotePosition =
 				this.settings.sidenotePosition;
+
+			// Add scroll listener for reading mode collision updates
+			const readingScroller =
+				readingRoot.querySelector<HTMLElement>(".markdown-preview-view") ??
+				readingRoot;
+
+			const onReadingScroll = () => {
+				if (this.readingModeScrollTimer !== null) {
+					window.clearTimeout(this.readingModeScrollTimer);
+				}
+				this.readingModeScrollTimer = window.setTimeout(() => {
+					this.readingModeScrollTimer = null;
+					this.avoidCollisionsInReadingMode(readingRoot);
+				}, 100);
+			};
+
+			readingScroller.addEventListener("scroll", onReadingScroll, {
+				passive: true,
+			});
+			this.cleanups.push(() => {
+				readingScroller.removeEventListener("scroll", onReadingScroll);
+				if (this.readingModeScrollTimer !== null) {
+					window.clearTimeout(this.readingModeScrollTimer);
+					this.readingModeScrollTimer = null;
+				}
+			});
 		}
 
 		const scroller = cmRoot.querySelector<HTMLElement>(".cm-scroller");
@@ -2060,18 +2075,25 @@ export default class SidenotePlugin extends Plugin {
 				cmRoot.querySelectorAll(".sidenote-margin").length;
 
 			// Run collision avoidance after DOM is settled
+			// Use chained RAFs for reliable timing
 			requestAnimationFrame(() => {
 				requestAnimationFrame(() => {
-					this.updateVisibleCollisions();
+					if (!cmRoot.isConnected) return;
+					this.updateEditingModeCollisions();
 				});
 			});
 		} else {
-			// No new sidenotes, just update collisions for existing ones
+			// No new sidenotes to process
 			this.lastSidenoteCount =
 				cmRoot.querySelectorAll(".sidenote-margin").length;
+
 			if (this.lastSidenoteCount > 0 && mode !== "hidden") {
+				// Still run collision avoidance for existing sidenotes
 				requestAnimationFrame(() => {
-					this.updateVisibleCollisions();
+					requestAnimationFrame(() => {
+						if (!cmRoot.isConnected) return;
+						this.updateEditingModeCollisions();
+					});
 				});
 			}
 		}
@@ -2949,93 +2971,147 @@ export default class SidenotePlugin extends Plugin {
 	// ==================== Collision Avoidance ====================
 
 	/**
-	 * Run collision avoidance on all sidenotes, not just visible ones.
-	 * This is more robust for ensuring proper spacing.
+	 * Core collision avoidance algorithm.
+	 *
+	 * Each margin is absolutely positioned to align with its anchor (the inline reference).
+	 * With --sidenote-shift: 0px, the margin's top aligns with its anchor's top.
+	 * We apply positive shifts to push margins down when they would overlap.
+	 *
+	 * @param margins - Array of margin elements to check for collisions
+	 * @param spacing - Minimum pixels between stacked sidenotes
 	 */
-	private avoidCollisions(nodes: HTMLElement[], spacing: number) {
-		if (!nodes || nodes.length === 0) return;
+	private resolveCollisions(margins: HTMLElement[], spacing: number) {
+		if (!margins || margins.length === 0) return;
 
-		// Reset all shifts first
-		for (const sn of nodes) {
-			if (sn?.style) {
-				sn.style.setProperty("--sidenote-shift", "0px");
+		// Filter to only connected, visible margins
+		const validMargins = margins.filter(
+			(m) => m.isConnected && m.offsetHeight > 0,
+		);
+
+		if (validMargins.length === 0) return;
+
+		// Step 1: Reset all shifts to measure natural/anchor positions
+		for (const margin of validMargins) {
+			margin.style.setProperty("--sidenote-shift", "0px");
+		}
+
+		// Step 2: Force synchronous reflow to get accurate measurements
+		void document.body.offsetHeight;
+
+		// Step 3: Measure each margin at its natural position (shift=0)
+		const items: {
+			el: HTMLElement;
+			anchorY: number; // Top position when shift=0 (aligned with anchor)
+			height: number;
+			shift: number; // Shift to apply (will be calculated)
+		}[] = [];
+
+		for (const margin of validMargins) {
+			const rect = margin.getBoundingClientRect();
+			if (rect.height <= 0) continue;
+
+			items.push({
+				el: margin,
+				anchorY: rect.top,
+				height: rect.height,
+				shift: 0,
+			});
+		}
+
+		if (items.length === 0) return;
+
+		// Step 4: Sort by anchor position (document order)
+		items.sort((a, b) => a.anchorY - b.anchorY);
+
+		// Step 5: Greedily assign positions to avoid collisions
+		// Track where the next available vertical position is
+		let nextFreeY = -Infinity;
+
+		for (const item of items) {
+			// This margin wants to be at anchorY
+			// But it cannot start above nextFreeY
+			const targetY = Math.max(item.anchorY, nextFreeY);
+
+			// The shift is how far from anchorY we need to move
+			item.shift = targetY - item.anchorY;
+
+			// Update nextFreeY to be after this margin
+			nextFreeY = targetY + item.height + spacing;
+		}
+
+		// Step 6: Apply the calculated shifts
+		for (const item of items) {
+			if (item.shift > 0.5) {
+				item.el.style.setProperty("--sidenote-shift", `${item.shift}px`);
+			} else {
+				item.el.style.setProperty("--sidenote-shift", "0px");
 			}
 		}
+	}
+	/**
+	 * Schedule collision resolution for editing mode.
+	 */
+	private scheduleCollisionUpdate() {
+		if (this.rafId !== null) return;
 
-		// Force a reflow to get accurate measurements after reset
-		const firstNode = nodes[0];
-		if (firstNode) {
-			void firstNode.offsetHeight;
-		}
-
-		// Measure and sort
-		const measured = nodes
-			.filter((el) => el && el.getBoundingClientRect) // Filter out invalid elements
-			.map((el) => ({
-				el,
-				rect: el.getBoundingClientRect(),
-			}))
-			.filter((item) => item.rect && item.rect.height > 0)
-			.sort((a, b) => a.rect.top - b.rect.top);
-
-		if (measured.length === 0) return;
-
-		const updates: { el: HTMLElement; shift: number }[] = [];
-		let bottom = -Infinity;
-
-		for (const { el, rect } of measured) {
-			const desiredTop = rect.top;
-			const minTop = bottom === -Infinity ? desiredTop : bottom + spacing;
-			const actualTop = Math.max(desiredTop, minTop);
-
-			const shift = actualTop - desiredTop;
-			if (shift > 0.5) {
-				updates.push({ el, shift });
-			}
-
-			bottom = actualTop + rect.height;
-		}
-
-		// Apply all updates
-		for (const { el, shift } of updates) {
-			if (el?.style) {
-				el.style.setProperty("--sidenote-shift", `${shift}px`);
-			}
-		}
-
-		// Update hash after successful collision avoidance
-		this.lastCollisionHash = measured
-			.map((m) => `${Math.round(m.rect.top)}:${Math.round(m.rect.height)}`)
-			.join("|");
+		this.rafId = requestAnimationFrame(() => {
+			this.rafId = null;
+			this.updateEditingModeCollisions();
+		});
 	}
 
 	/**
-	 * Update collisions for all margin notes in the current view.
+	 * Update collisions in editing mode (source view).
+	 */
+	private updateEditingModeCollisions() {
+		if (!this.cmRoot) return;
+
+		const margins = Array.from(
+			this.cmRoot.querySelectorAll<HTMLElement>("small.sidenote-margin"),
+		);
+
+		this.resolveCollisions(margins, this.settings.collisionSpacing);
+	}
+
+	/**
+	 * Update collisions in reading mode.
+	 */
+	private updateReadingModeCollisions() {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) return;
+
+		const readingRoot = view.containerEl.querySelector<HTMLElement>(
+			".markdown-reading-view",
+		);
+		if (!readingRoot) return;
+
+		const margins = Array.from(
+			readingRoot.querySelectorAll<HTMLElement>("small.sidenote-margin"),
+		);
+
+		this.resolveCollisions(margins, this.settings.collisionSpacing);
+	}
+
+	/**
+	 * Update collisions for all visible sidenotes in both modes.
 	 */
 	private updateVisibleCollisions() {
-		// Handle source view
-		if (this.cmRoot) {
-			const sourceMargins = Array.from(
-				this.cmRoot.querySelectorAll<HTMLElement>("small.sidenote-margin"),
-			);
-			if (sourceMargins.length > 0) {
-				this.avoidCollisions(
-					sourceMargins,
-					this.settings.collisionSpacing,
-				);
-			}
-		}
+		this.updateEditingModeCollisions();
+		this.updateReadingModeCollisions();
+	}
 
-		// Handle reading view separately
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (view) {
-			const readingRoot = view.containerEl.querySelector<HTMLElement>(
-				".markdown-reading-view",
-			);
-			if (readingRoot) {
-				this.avoidCollisionsInReadingMode(readingRoot);
-			}
-		}
+	/**
+	 * Run collision avoidance specifically for reading mode sidenotes.
+	 * This is called after processing sidenotes in reading mode.
+	 */
+	private avoidCollisionsInReadingMode(readingRoot: HTMLElement) {
+		if (!readingRoot?.isConnected) return;
+
+		const margins = Array.from(
+			readingRoot.querySelectorAll<HTMLElement>("small.sidenote-margin"),
+		);
+
+		this.resolveCollisions(margins, this.settings.collisionSpacing);
 	}
 }
 
