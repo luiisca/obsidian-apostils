@@ -333,12 +333,39 @@ export default class SidenotePlugin extends Plugin {
 	}
 
 	async saveSettings() {
-		await this.saveData(this.settings);
-		this.injectStyles();
-		this.updatePositionDataAttributes();
-		this.invalidateLayoutCache();
-		this.scheduleLayout();
-		this.scheduleReadingModeLayout();
+		try {
+			// Validate settings before saving
+			const s = this.settings;
+
+			// Ensure min <= max for widths
+			if (s.minSidenoteWidth > s.maxSidenoteWidth) {
+				s.minSidenoteWidth = s.maxSidenoteWidth;
+			}
+
+			// Ensure breakpoints are in order
+			if (s.hideBelow >= s.compactBelow) {
+				s.compactBelow = s.hideBelow + 100;
+			}
+			if (s.compactBelow >= s.fullAbove) {
+				s.fullAbove = s.compactBelow + 100;
+			}
+
+			// Clamp values to reasonable ranges
+			s.collisionSpacing = Math.max(0, Math.min(50, s.collisionSpacing));
+			s.fontSize = Math.max(50, Math.min(150, s.fontSize));
+			s.fontSizeCompact = Math.max(50, Math.min(150, s.fontSizeCompact));
+			s.lineHeight = Math.max(1, Math.min(3, s.lineHeight));
+			s.pageOffsetFactor = Math.max(0, Math.min(1, s.pageOffsetFactor));
+
+			await this.saveData(this.settings);
+			this.injectStyles();
+			this.updatePositionDataAttributes();
+			this.invalidateLayoutCache();
+			this.scheduleLayout();
+			this.scheduleReadingModeLayout();
+		} catch (error) {
+			console.error("Sidenote plugin: Failed to save settings", error);
+		}
 	}
 
 	// ==================== Performance Utilities ====================
