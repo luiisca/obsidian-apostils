@@ -2577,25 +2577,33 @@ export default class SidenotePlugin extends Plugin {
 		margin: HTMLElement,
 		sourceSpan: HTMLElement,
 		docPos: number | null,
-		sidenoteIndex: number, // Add this parameter - the 1-based index of this sidenote in the document
+		sidenoteIndex: number,
 	) {
-		// Store the sidenote index for reliable identification
 		margin.dataset.editing = "false";
 		margin.dataset.sidenoteIndex = String(sidenoteIndex);
 
-		// Prevent click from propagating to editor (which would focus the source)
-		margin.addEventListener("mousedown", (e) => {
+		// Use named functions so they can be removed on cleanup
+		const onMouseDown = (e: MouseEvent) => {
 			e.stopPropagation();
-		});
+		};
 
-		margin.addEventListener("click", (e) => {
+		const onClick = (e: MouseEvent) => {
 			e.preventDefault();
 			e.stopPropagation();
 
 			if (margin.dataset.editing === "true") return;
 
 			this.startMarginEdit(margin, sourceSpan, sidenoteIndex);
-		});
+		};
+
+		margin.addEventListener("mousedown", onMouseDown);
+		margin.addEventListener("click", onClick);
+
+		// Store cleanup reference on the element for later removal
+		(margin as any)._sidenoteCleanup = () => {
+			margin.removeEventListener("mousedown", onMouseDown);
+			margin.removeEventListener("click", onClick);
+		};
 	}
 
 	/**
