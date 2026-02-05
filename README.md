@@ -30,7 +30,6 @@ _An optional style that highlights references. Useful in long texts_
 ### Goal Features:
 
 - **Optional Markdown style syntax:** I'd like an optional Markdown-style mode to enable some sort of coded sidenote like `;;sidenote text;;` or `&&sidenote text&&`. Currently, it only responds to this one HTML tag `<span class="sidenote">`. The benefit of HTML syntax is that it can be made to work in web-published notes as well.
-- An option to convert footnotes into sidenotes in Reading Mode and in Editing Mode. Current only works in Reading Mode.
 
 ## Alternatives:
 
