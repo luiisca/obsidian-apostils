@@ -751,58 +751,62 @@ export default class SidenotePlugin extends Plugin {
 				? `
         /* Neumorphic badge variables */
         :root {
-            --sn-badge-bg: rgba(255, 255, 255, 0.05);
-            --sn-badge-text: var(--text-muted);
-            --sn-badge-border: rgba(255, 255, 255, 0.1);
-            --sn-active-bg: var(--interactive-accent);
-            --sn-active-text: #ffffff;
+					--sn-badge-bg: rgba(243, 245, 250, 0.05);
+					--sn-badge-text: var(--text-muted);
+					--sn-badge-border: rgba(243, 245, 250, 0.1);
+					--sn-active-bg: rgba(243, 245, 250, 0.1);
+					--sn-active-text: #ffffff;
         }
 
         .sidenote-margin[data-sidenote-num]::before {
-            content: attr(data-sidenote-num) !important;
-            display: inline-flex !important;
-            align-items: center;
-            justify-content: center;
-            min-width: 1.7em;
-            height: 1.7em;
-            margin-right: 8px;
-            padding: 0 4px;
-            background-color: var(--sn-badge-bg) !important;
-            border: 1px solid var(--sn-badge-border) !important;
-            border-radius: 4px !important;
-            color: ${s.numberColor || "var(--sn-badge-text)"} !important;
-            font-family: var(--font-monospace) !important;
-            font-size: 0.85em !important;
-            font-weight: 600 !important;
-            vertical-align: middle;
-            line-height: 1;
+					content: attr(data-sidenote-num) !important;
+					display: inline-flex !important;
+					align-items: center;
+					justify-content: center;
+					min-width: 1.7em;
+					height: 1.7em;
+					margin-right: 8px;
+					padding: 0 4px;
+					background-color: var(--sn-badge-bg) !important;
+					border: 1px solid var(--sn-badge-border) !important;
+					border-radius: 4px !important;
+					color: ${s.numberColor || "var(--sn-badge-text)"} !important;
+					font-family: var(--font-monospace) !important;
+					font-size: 0.85em !important;
+					font-weight: 600 !important;
+					vertical-align: middle;
+					line-height: 1;
         }
 
         .sidenote-margin:hover[data-sidenote-num]::before,
         .sidenote-margin[data-editing="true"][data-sidenote-num]::before {
-            background-color: var(--sn-active-bg) !important;
-            color: var(--sn-active-text) !important;
-            border-color: transparent !important;
+					background-color: var(--sn-active-bg) !important;
+					color: var(--sn-active-text) !important;
+					/* border-color: transparent !important; */
         }
 
         .sidenote-number::after {
-            content: attr(data-sidenote-num);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 1.3em;
-            height: 1.4em;
-            background-color: var(--sn-badge-bg);
-            border: 1px solid var(--sn-badge-border);
-            border-radius: 3px;
-            color: ${s.numberColor || "var(--sn-badge-text)"};
-            font-size: 0.7em;
-            font-weight: bold;
-            margin-left: 2px;
-            margin-right: 0.2rem;
-            vertical-align: super;
-            line-height: 0;
+					content: attr(data-sidenote-num);
+					display: inline-flex;
+					align-items: center;
+					justify-content: center;
+					min-width: 1.3em;
+					height: 1.4em;
+					background-color: var(--sn-badge-bg);
+					border: 1px solid var(--sn-badge-border);
+					border-radius: 3px;
+					color: ${s.numberColor || "var(--sn-badge-text)"};
+					font-size: 0.7em;
+					font-weight: bold;
+					margin-left: 2px;
+					margin-right: 0.2rem;
+					vertical-align: super;
+					line-height: 0;
         }
+				
+				.sidenote-number:hover {
+					color: #ffffff;
+	      }
     `
 				: "";
 
