@@ -132,6 +132,8 @@ export default class SidenotePlugin extends Plugin {
 
 	private footnoteProcessingTimer: number | null = null;
 
+	private pendingFootnoteEdit: string | null = null;
+
 	async onload() {
 		await this.loadSettings();
 
@@ -169,54 +171,78 @@ export default class SidenotePlugin extends Plugin {
 				} else {
 					// Footnote format - need to find next available footnote number
 					const content = editor.getValue();
-					const existingFootnotes = content.match(/\[\^(\d+)\]/g) ?? [];
-					const usedNumbers = existingFootnotes.map((fn) => {
+					const existingRefs = content.match(/\[\^(\d+)\]/g) ?? [];
+					const usedNumbers = existingRefs.map((fn) => {
 						const match = fn.match(/\[\^(\d+)\]/);
 						return match && match[1] ? parseInt(match[1], 10) : 0;
 					});
 					const nextNum =
 						usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
 
-					if (selectedText) {
-						// Insert reference at cursor and add definition at end
-						editor.replaceSelection(`[^${nextNum}]`);
+					// Determine the content for the footnote
+					const footnoteContent = selectedText
+						? selectedText
+						: "New sidenote";
 
-						// Add definition at end of document
+					// Find where footnote definitions are in the document
+					const lines = content.split("\n");
+					let lastFootnoteLine = -1;
+
+					for (let i = 0; i < lines.length; i++) {
+						const line = lines[i];
+						if (line && line.match(/^\[\^[^\]]+\]:/)) {
+							lastFootnoteLine = i;
+						}
+					}
+
+					// Build the definition
+					const definition = `[^${nextNum}]: ${footnoteContent}`;
+
+					// Insert the reference at cursor
+					editor.replaceRange(`[^${nextNum}]`, cursor);
+
+					// Re-read content after first insertion
+					const updatedContent = editor.getValue();
+					const updatedLines = updatedContent.split("\n");
+
+					if (lastFootnoteLine === -1) {
+						// No existing footnotes - add at the very end with blank lines
 						const lastLine = editor.lastLine();
 						const lastLineContent = editor.getLine(lastLine);
-						const definitionPrefix = lastLineContent.trim()
-							? "\n\n"
-							: "\n";
-						editor.replaceRange(
-							`${definitionPrefix}[^${nextNum}]: ${selectedText}`,
-							{ line: lastLine, ch: lastLineContent.length },
-						);
-					} else {
-						// Insert reference and empty definition
-						editor.replaceRange(`[^${nextNum}]`, cursor);
-
-						const lastLine = editor.lastLine();
-						const lastLineContent = editor.getLine(lastLine);
-						const definitionPrefix = lastLineContent.trim()
-							? "\n\n"
-							: "\n";
-						const definitionPos = {
+						const prefix = lastLineContent.trim() ? "\n\n" : "\n";
+						editor.replaceRange(prefix + definition, {
 							line: lastLine,
 							ch: lastLineContent.length,
-						};
-						editor.replaceRange(
-							`${definitionPrefix}[^${nextNum}]: `,
-							definitionPos,
-						);
-
-						// Move cursor to definition
-						const newLastLine = editor.lastLine();
-						const newLastLineContent = editor.getLine(newLastLine);
-						editor.setCursor({
-							line: newLastLine,
-							ch: newLastLineContent.length,
 						});
+					} else {
+						// Find the last footnote line again in the updated content
+						let newLastFootnoteLine = -1;
+						for (let i = 0; i < updatedLines.length; i++) {
+							const line = updatedLines[i];
+							if (line && line.match(/^\[\^[^\]]+\]:/)) {
+								newLastFootnoteLine = i;
+							}
+						}
+
+						if (newLastFootnoteLine !== -1) {
+							// Insert after the last footnote
+							const insertLineContent = editor.getLine(
+								newLastFootnoteLine,
+							);
+							editor.replaceRange("\n" + definition, {
+								line: newLastFootnoteLine,
+								ch: insertLineContent.length,
+							});
+						}
 					}
+
+					// Set flag to auto-edit this footnote when the widget appears
+					this.pendingFootnoteEdit = String(nextNum);
+
+					// Schedule the auto-edit after widgets are rendered
+					setTimeout(() => {
+						this.triggerPendingFootnoteEdit();
+					}, 150);
 				}
 			},
 		});
@@ -294,6 +320,9 @@ export default class SidenotePlugin extends Plugin {
 		this.cancelAllTimers();
 		this.cleanups.forEach((fn) => fn());
 		this.cleanups = [];
+
+		// Clear pending edit
+		this.pendingFootnoteEdit = null;
 
 		// Clean up footnote processing timer
 		if (this.footnoteProcessingTimer !== null) {
@@ -432,14 +461,134 @@ export default class SidenotePlugin extends Plugin {
 			s.pageOffsetFactor = Math.max(0, Math.min(1, s.pageOffsetFactor));
 
 			await this.saveData(this.settings);
+
+			// Full cleanup and refresh
+			this.cleanupCurrentView();
 			this.injectStyles();
-			this.updatePositionDataAttributes();
+			this.resetRegistry();
 			this.invalidateLayoutCache();
-			this.scheduleLayout();
-			this.scheduleReadingModeLayout();
+			this.scanDocumentForSidenotes();
+			this.rebindAndSchedule();
+
+			// Force reprocess reading mode
+			this.forceReadingModeRefresh();
 		} catch (error) {
 			console.error("Sidenote plugin: Failed to save settings", error);
 		}
+	}
+
+	/**
+	 * Clean up sidenote markup from the current view.
+	 */
+	private cleanupCurrentView() {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) return;
+
+		// Clean up editing mode
+		const cmRoot = view.containerEl.querySelector<HTMLElement>(
+			".markdown-source-view.mod-cm6",
+		);
+		if (cmRoot) {
+			// Remove all sidenote wrappers and margins
+			this.removeAllSidenoteMarkup(cmRoot);
+
+			// Reset data attributes
+			cmRoot.dataset.sidenoteMode = "";
+			cmRoot.dataset.hasSidenotes = "";
+		}
+
+		// Clean up reading mode
+		const readingRoot = view.containerEl.querySelector<HTMLElement>(
+			".markdown-reading-view",
+		);
+		if (readingRoot) {
+			// Remove all sidenote markup
+			this.removeAllSidenoteMarkupFromReadingMode(readingRoot);
+
+			// Reset data attributes
+			readingRoot.dataset.sidenoteMode = "";
+			readingRoot.dataset.hasSidenotes = "";
+		}
+	}
+
+	/**
+	 * Force a refresh of reading mode sidenotes.
+	 */
+	private forceReadingModeRefresh() {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (!view) return;
+
+		const readingRoot = view.containerEl.querySelector<HTMLElement>(
+			".markdown-reading-view",
+		);
+		if (!readingRoot) return;
+
+		// Clear any processed flags
+		readingRoot
+			.querySelectorAll("[data-sidenotes-processed]")
+			.forEach((el) => {
+				delete (el as HTMLElement).dataset.sidenotesProcessed;
+			});
+
+		// Reset the mode so it gets recalculated
+		readingRoot.dataset.sidenoteMode = "";
+		readingRoot.style.removeProperty("--sidenote-scale");
+
+		// Schedule reprocessing with a delay to ensure cleanup is complete
+		setTimeout(() => {
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					this.processReadingModeSidenotes(readingRoot);
+				});
+			});
+		}, 100);
+	}
+
+	/**
+	 * Trigger editing mode for a newly inserted footnote sidenote.
+	 */
+	private triggerPendingFootnoteEdit() {
+		if (!this.pendingFootnoteEdit) return;
+
+		const footnoteId = this.pendingFootnoteEdit;
+		this.pendingFootnoteEdit = null;
+
+		const cmRoot = this.cmRoot;
+		if (!cmRoot) return;
+
+		// Find the wrapper for this footnote by its ID
+		const wrapper = cmRoot.querySelector<HTMLElement>(
+			`span.sidenote-number[data-footnote-id="${footnoteId}"]`,
+		);
+
+		if (!wrapper) {
+			// Widget might not be rendered yet, try again
+			this.pendingFootnoteEdit = footnoteId;
+			setTimeout(() => {
+				this.triggerPendingFootnoteEdit();
+			}, 100);
+			return;
+		}
+
+		// Find the margin inside the wrapper
+		const margin = wrapper.querySelector<HTMLElement>(
+			"small.sidenote-margin",
+		);
+		if (!margin) return;
+
+		// Simulate a click to start editing
+		margin.click();
+
+		// After editing starts, select all the text
+		setTimeout(() => {
+			const selection = window.getSelection();
+			if (selection && margin.contentEditable === "true") {
+				const range = document.createRange();
+				range.selectNodeContents(margin);
+				selection.removeAllRanges();
+				selection.addRange(range);
+			}
+		}, 50);
 	}
 
 	// ==================== Performance Utilities ====================
@@ -1131,12 +1280,14 @@ export default class SidenotePlugin extends Plugin {
 		this.removeAllSidenoteMarkupFromReadingMode(readingRoot);
 
 		// Collect items based on the sidenoteFormat setting
+		// Note: footnoteHtml is optional and only used for footnotes
 		const allItems: {
 			el: HTMLElement;
 			rect: DOMRect;
 			type: "sidenote" | "footnote";
 			text: string;
 			footnoteId?: string;
+			footnoteHtml?: HTMLElement;
 		}[] = [];
 
 		// Determine what to collect
@@ -1192,21 +1343,35 @@ export default class SidenotePlugin extends Plugin {
 
 				if (!footnoteLi) continue;
 
-				// Extract text, removing the backref link
-				const clone = footnoteLi.cloneNode(true) as HTMLElement;
-				clone
+				// Create a container to hold the footnote content
+				const contentContainer = document.createElement("span");
+
+				// Get the inner content - if there's a <p>, get its contents, otherwise get li contents
+				const paragraph = footnoteLi.querySelector("p");
+				const sourceElement = paragraph ?? footnoteLi;
+
+				// Clone child nodes to preserve HTML formatting
+				for (const child of Array.from(sourceElement.childNodes)) {
+					const cloned = child.cloneNode(true);
+					contentContainer.appendChild(cloned);
+				}
+
+				// Remove backref links from the cloned content
+				contentContainer
 					.querySelectorAll("a.footnote-backref, a[href^='#fnref']")
 					.forEach((el) => el.remove());
-				const footnoteContent = clone.textContent?.trim();
 
-				if (!footnoteContent) continue;
+				// Get text for sorting/fallback purposes
+				const footnoteText = contentContainer.textContent?.trim();
+				if (!footnoteText) continue;
 
 				allItems.push({
 					el: sup,
 					rect: sup.getBoundingClientRect(),
 					type: "footnote",
-					text: footnoteContent,
+					text: footnoteText,
 					footnoteId: fnId,
+					footnoteHtml: contentContainer,
 				});
 			}
 		}
@@ -1261,9 +1426,15 @@ export default class SidenotePlugin extends Plugin {
 					(anchor as HTMLElement).style.display = "none";
 				}
 
-				margin.appendChild(
-					this.renderLinksToFragment(this.normalizeText(item.text)),
-				);
+				// Clone the HTML content from the footnote, preserving formatting
+				if (item.footnoteHtml) {
+					this.cloneContentToMargin(item.footnoteHtml, margin);
+				} else {
+					// Fallback to text rendering
+					margin.appendChild(
+						this.renderLinksToFragment(this.normalizeText(item.text)),
+					);
+				}
 			}
 
 			item.el.parentNode?.insertBefore(wrapper, item.el);
@@ -1471,16 +1642,6 @@ export default class SidenotePlugin extends Plugin {
 	}
 
 	/**
-	 * Hide the original footnote reference (the [1] link).
-	 */
-	private hideFootnoteReference(sup: HTMLElement) {
-		const link = sup.querySelector<HTMLElement>("a");
-		if (link) {
-			link.style.display = "none";
-		}
-	}
-
-	/**
 	 * Schedule collision avoidance for reading mode with proper timing.
 	 * Uses multiple techniques to ensure layout is complete before measuring.
 	 */
@@ -1557,123 +1718,6 @@ export default class SidenotePlugin extends Plugin {
 
 			wrapper.remove();
 		}
-	}
-
-	/**
-	 * Convert roman numeral string to number.
-	 */
-	private fromRoman(str: string): number {
-		const romanValues: Record<string, number> = {
-			i: 1,
-			v: 5,
-			x: 10,
-			l: 50,
-			c: 100,
-			d: 500,
-			m: 1000,
-		};
-
-		let result = 0;
-		let prevValue = 0;
-
-		for (let i = str.length - 1; i >= 0; i--) {
-			const char: string | undefined = str[i];
-			if (!char) {
-				continue;
-			}
-
-			const value: number = romanValues[char as string] ?? 0;
-
-			if (value === 0) {
-				return 0; // Invalid character
-			}
-
-			if (value < prevValue) {
-				result -= value;
-			} else {
-				result += value;
-			}
-			prevValue = value;
-		}
-
-		return result;
-	}
-
-	/**
-	 * Convert letter string to number (a=1, b=2, ..., z=26, aa=27, etc.)
-	 */
-	private fromLetters(str: string): number {
-		let result = 0;
-
-		for (const char of str) {
-			const code = char.charCodeAt(0);
-			if (code < 97 || code > 122) {
-				return 0; // Invalid character
-			}
-			result = result * 26 + (code - 96);
-		}
-
-		return result;
-	}
-
-	/**
-	 * Find the content of a footnote by its ID in reading mode.
-	 */
-	private findFootnoteContent(
-		root: HTMLElement,
-		fnId: string,
-	): string | null {
-		// Obsidian renders footnote definitions in a section like:
-		// <section class="footnotes" data-footnotes>
-		//   <ol>
-		//     <li id="fn-1-HASH">
-		//       <p>Footnote text <a href="#fnref-1-HASH" class="footnote-backref">↩</a></p>
-		//     </li>
-		//   </ol>
-		// </section>
-
-		// Method 1: Direct ID lookup
-		let li: Element | null = null;
-
-		try {
-			// Try with CSS.escape for IDs with special characters
-			li = root.querySelector(`#${CSS.escape(fnId)}`);
-		} catch (e) {
-			// Fallback without escape
-			try {
-				li = root.querySelector(`[id="${fnId}"]`);
-			} catch (e2) {
-				// Continue to other methods
-			}
-		}
-
-		if (li) {
-			return this.extractFootnoteText(li as HTMLElement);
-		}
-
-		// Method 2: Look in footnotes section by scanning all li elements
-		const footnoteSections = root.querySelectorAll(
-			"section.footnotes, section[data-footnotes], .footnotes",
-		);
-
-		for (const section of Array.from(footnoteSections)) {
-			const items = section.querySelectorAll("li");
-			for (const item of Array.from(items)) {
-				if (item.id === fnId) {
-					return this.extractFootnoteText(item);
-				}
-			}
-		}
-
-		// Method 3: Look for any li with matching id pattern
-		const allLis = root.querySelectorAll("li[id^='fn-']");
-		for (const item of Array.from(allLis)) {
-			if (item.id === fnId) {
-				return this.extractFootnoteText(item as HTMLElement);
-			}
-		}
-
-		return null;
 	}
 
 	/**
@@ -1847,8 +1891,18 @@ export default class SidenotePlugin extends Plugin {
 				scaleFactor.toFixed(3),
 			);
 
+			// Check if we have sidenotes - if using footnotes, we need to check for those
+			const hasMargins =
+				readingRoot.querySelectorAll("small.sidenote-margin").length > 0;
+
+			// If no margins exist but we should have sidenotes, reprocess
+			if (!hasMargins && this.documentHasSidenotes && mode !== "hidden") {
+				this.processReadingModeSidenotes(readingRoot);
+				return;
+			}
+
 			// Run collision avoidance for reading mode if not hidden
-			if (mode !== "hidden") {
+			if (mode !== "hidden" && hasMargins) {
 				requestAnimationFrame(() => {
 					this.updateReadingModeCollisions();
 				});
@@ -2032,11 +2086,14 @@ export default class SidenotePlugin extends Plugin {
 		cmRoot.dataset.sidenotePosition = this.settings.sidenotePosition;
 
 		let resizeTimeout: number | null = null;
-		this.resizeObserver = new ResizeObserver(() => {
+		this.resizeObserver = new ResizeObserver((entries) => {
 			if (resizeTimeout !== null) return;
 			resizeTimeout = window.setTimeout(() => {
 				resizeTimeout = null;
 				this.scheduleLayout();
+
+				// Also update reading mode on resize
+				this.scheduleReadingModeLayout();
 			}, 100);
 		});
 		this.resizeObserver.observe(cmRoot);
@@ -3373,6 +3430,7 @@ class FootnoteSidenoteWidget extends WidgetType {
 
 		const onMouseDown = (e: MouseEvent) => {
 			e.stopPropagation();
+			e.preventDefault();
 		};
 
 		const onClick = (e: MouseEvent) => {
@@ -3407,15 +3465,10 @@ class FootnoteSidenoteWidget extends WidgetType {
 		selection?.removeAllRanges();
 		selection?.addRange(range);
 
-		// Handle blur (save changes)
-		const onBlur = () => {
-			this.finishMarginEdit(margin);
-			margin.removeEventListener("blur", onBlur);
-			margin.removeEventListener("keydown", onKeydown);
-		};
+		// Prevent keyboard events from reaching the editor
+		const onKeyDown = (e: KeyboardEvent) => {
+			e.stopPropagation();
 
-		// Handle keyboard
-		const onKeydown = (e: KeyboardEvent) => {
 			if (e.key === "Enter" && !e.shiftKey) {
 				e.preventDefault();
 				margin.blur();
@@ -3431,12 +3484,33 @@ class FootnoteSidenoteWidget extends WidgetType {
 					),
 				);
 				margin.removeEventListener("blur", onBlur);
-				margin.removeEventListener("keydown", onKeydown);
+				margin.removeEventListener("keydown", onKeyDown);
+				margin.removeEventListener("keyup", onKeyUp);
+				margin.removeEventListener("keypress", onKeyPress);
 			}
 		};
 
+		const onKeyUp = (e: KeyboardEvent) => {
+			e.stopPropagation();
+		};
+
+		const onKeyPress = (e: KeyboardEvent) => {
+			e.stopPropagation();
+		};
+
+		// Handle blur (save changes)
+		const onBlur = () => {
+			this.finishMarginEdit(margin);
+			margin.removeEventListener("blur", onBlur);
+			margin.removeEventListener("keydown", onKeyDown);
+			margin.removeEventListener("keyup", onKeyUp);
+			margin.removeEventListener("keypress", onKeyPress);
+		};
+
 		margin.addEventListener("blur", onBlur);
-		margin.addEventListener("keydown", onKeydown);
+		margin.addEventListener("keydown", onKeyDown);
+		margin.addEventListener("keyup", onKeyUp);
+		margin.addEventListener("keypress", onKeyPress);
 	}
 
 	private finishMarginEdit(margin: HTMLElement) {
