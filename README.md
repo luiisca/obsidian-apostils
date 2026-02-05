@@ -67,13 +67,13 @@ These are some other strategies I've seen for sidenotes in Obsidian.
 
 Run the command `Insert Sidenote`.
 
-**If using HTML** It will insert this:
+**If configured to use HTML format** It will insert this:
 
 ```html
 <span class="sidenote">{cursor}</span>
 ```
 
-**If using footnotes**, it will insert `[^1]` and create a sidenote for you to enter text in.
+**If confirgured to use footnotes format**, it will insert `[^1]` and create a sidenote for you to enter text in.
 
 ## Web Publishing
 
