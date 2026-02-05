@@ -10,7 +10,7 @@ _Basic sidenote capabilities demonstrated_
 ![Neumorphic badges](https://github.com/cparsell/sidenotes/blob/main/Screenshot-badges-multi.png)
 _An optional style that highlights references. Useful in long texts_
 
-### Features:
+### Features
 
 - **Sidenotes**: Sidenotes are displayed in the margin of a note. Run command `Insert Sidenote` to start one.
   - **External and Internal link support**
@@ -27,11 +27,11 @@ _An optional style that highlights references. Useful in long texts_
   - Customize spacing to tweak how it takes up space in the margin
   - Customize font size, line height, text alignment, and color
 
-### Goal Features:
+### Goal Features
 
 - None - Submit any suggestions
 
-## Alternatives:
+## Alternatives
 
 These are some other strategies I've seen for sidenotes in Obsidian.
 
