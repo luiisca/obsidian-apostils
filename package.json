@@ -1,30 +1,32 @@
 {
-	"name": "obsidian-sample-plugin",
-	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"name": "apostils",
+	"version": "0.1.6",
+	"description": "Obsidian plugin to create highlights, attach persistent sidenote annotations, and export your extracted notes to the vault or clipboard.",
+	"author": "luiisca",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"build:nolint": "node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint ."
 	},
 	"keywords": [],
-	"license": "0-BSD",
+	"license": "GPL-3.0-only",
 	"devDependencies": {
+		"@codemirror/state": "^6.0.0",
+		"@codemirror/view": "^6.0.0",
 		"@eslint/js": "9.30.1",
 		"@types/node": "^16.11.6",
+		"dependency-cruiser": "^17.3.7",
 		"esbuild": "0.25.5",
 		"eslint-plugin-obsidianmd": "0.1.9",
 		"globals": "14.0.0",
 		"jiti": "2.6.1",
+		"obsidian": "latest",
 		"tslib": "2.4.0",
 		"typescript": "^5.8.3",
-		"typescript-eslint": "8.35.1",
-		"@codemirror/state": "^6.0.0",
-		"@codemirror/view": "^6.0.0",
-		"obsidian": "latest"
-	},
-	"dependencies": {}
+		"typescript-eslint": "8.35.1"
+	}
 }
