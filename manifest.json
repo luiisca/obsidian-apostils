@@ -1,7 +1,7 @@
 {
 	"id": "apostils",
 	"name": "Apostils",
-	"version": "0.1.6",
+	"version": "0.2.0",
 	"minAppVersion": "1.10.0",
 	"description": "Create highlights, attach persistent sidenote annotations, and export your extracted notes to the vault or clipboard.",
 	"author": "luiisca",
