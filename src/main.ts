@@ -1,10 +1,7 @@
 import {
 	MarkdownView,
 	Plugin,
-	PluginSettingTab,
-	Setting,
 	TFile,
-	App,
 } from "obsidian";
 import {
 	EditorView,
@@ -16,45 +13,9 @@ import {
 } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 
-type CleanupFn = () => void;
-
-// Settings interface
-// Settings interface
-interface SidenoteSettings {
-	// Display
-	sidenotePosition: "left" | "right";
-	showSidenoteNumbers: boolean;
-	numberStyle: "arabic" | "roman" | "letters";
-	numberBadgeStyle: "plain" | "neumorphic" | "pill";
-	numberColor: string;
-
-	// Width & Spacing
-	minSidenoteWidth: number;
-	maxSidenoteWidth: number;
-	sidenoteGap: number;
-	sidenoteGap2: number;
-	sidenoteAnchor: "text" | "edge";
-	pageOffsetFactor: number;
-
-	// Breakpoints
-	hideBelow: number;
-	compactBelow: number;
-	fullAbove: number;
-
-	// Typography
-	fontSize: number;
-	fontSizeCompact: number;
-	lineHeight: number;
-	textAlignment: "left" | "right" | "justify";
-
-	// Behavior
-	collisionSpacing: number;
-	enableTransitions: boolean;
-	resetNumberingPerHeading: boolean;
-
-	// Source format
-	sidenoteFormat: "html" | "footnote" | "footnote-edit";
-}
+import type { CleanupFn, SidenoteSettings } from "types";
+import Highlighter from "highlighter";
+import SidenoteSettingTab from "setttings";
 
 const DEFAULT_SETTINGS: SidenoteSettings = {
 	// Display
@@ -89,7 +50,16 @@ const DEFAULT_SETTINGS: SidenoteSettings = {
 	resetNumberingPerHeading: false,
 
 	// Source format
-	sidenoteFormat: "html",
+	sidenoteFormat: "footnote-edit",
+
+	// highlights
+	highlights: {},
+	exportAsBulletPoints: true,
+	nativeCommentFormat: '%% %%',
+	// htmlHighlightFormat: '%% %%',
+	regularHighlightFormat: '== ==',
+	footnoteFormat: '',
+	exportPath: '/',
 };
 
 // Regex to detect sidenote spans in source text
@@ -101,6 +71,7 @@ const SIDENOTE_PATTERN = /<span\s+class\s*=\s*["']sidenote["'][^>]*>/gi;
 export default class SidenotePlugin extends Plugin {
 	settings: SidenoteSettings;
 
+	private hi: Highlighter
 	private rafId: number | null = null;
 	private cleanups: CleanupFn[] = [];
 	private cmRoot: HTMLElement | null = null;
@@ -141,6 +112,9 @@ export default class SidenotePlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+
+		this.hi = new Highlighter(this);
+		this.hi.onload().catch(console.error);
 
 		this.addSettingTab(new SidenoteSettingTab(this.app, this));
 		this.injectStyles();
@@ -433,15 +407,37 @@ export default class SidenotePlugin extends Plugin {
 			const data = (await this.loadData()) as
 				| Partial<SidenoteSettings>
 				| undefined;
-			this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+			this.settings = this.safeMergeSettings(data);
 		} catch (error) {
 			console.error("Sidenote plugin: Failed to load settings", error);
 			this.settings = Object.assign({}, DEFAULT_SETTINGS);
 		}
 	}
 
+	safeMergeSettings(loadedData?: Partial<SidenoteSettings>) {
+		// Start with defaults
+		const merged = { ...DEFAULT_SETTINGS };
+
+		if (!loadedData) {
+			return merged;
+		}
+
+		// Merge all loaded data, but ensure critical data is preserved
+		Object.assign(merged, loadedData);
+
+		// Explicitly preserve critical data structures even if they appear in defaults
+		// This prevents the Object.assign vulnerability where undefined fields get default empty objects
+		if (loadedData.highlights !== undefined) {
+			merged.highlights = loadedData.highlights;
+		}
+
+		return merged;
+	}
+
 	async saveSettings() {
 		try {
+			this.settings.highlights = Object.fromEntries(this.hi.highlights);
+
 			// Validate settings before saving
 			const s = this.settings;
 
@@ -480,6 +476,15 @@ export default class SidenotePlugin extends Plugin {
 		} catch (error) {
 			console.error("Sidenote plugin: Failed to save settings", error);
 		}
+	}
+
+	// Implement onExternalSettingsChange to reload all settings when they change externally
+	async onExternalSettingsChange() {
+		// Reload settings from disk to get latest external changes
+		await this.loadSettings();
+
+		// Update highlights map with the reloaded data
+		this.hi.highlights = new Map(Object.entries(this.settings.highlights || {}));
 	}
 
 	/**
@@ -1157,10 +1162,9 @@ export default class SidenotePlugin extends Plugin {
 	${pillStyles}
 
 			/* Hide footnotes section when using footnote formats */
-			${
-				this.settings.sidenoteFormat === "footnote" ||
+			${this.settings.sidenoteFormat === "footnote" ||
 				this.settings.sidenoteFormat === "footnote-edit"
-					? `
+				? `
 			.markdown-reading-view[data-has-sidenotes="true"][data-sidenote-mode="normal"] section.footnotes,
 			.markdown-reading-view[data-has-sidenotes="true"][data-sidenote-mode="compact"] section.footnotes,
 			.markdown-reading-view[data-has-sidenotes="true"][data-sidenote-mode="full"] section.footnotes {
@@ -1172,20 +1176,19 @@ export default class SidenotePlugin extends Plugin {
 				display: none;
 			}
 			`
-					: ""
+				: ""
 			}
 
 			/* Hide footnote definitions in editing mode when using footnote-edit */
-			${
-				this.settings.sidenoteFormat === "footnote-edit"
-					? `
+			${this.settings.sidenoteFormat === "footnote-edit"
+				? `
 			.markdown-source-view.mod-cm6[data-has-sidenotes="true"][data-sidenote-mode="normal"] .cm-line.HyperMD-footnote,
 			.markdown-source-view.mod-cm6[data-has-sidenotes="true"][data-sidenote-mode="compact"] .cm-line.HyperMD-footnote,
 			.markdown-source-view.mod-cm6[data-has-sidenotes="true"][data-sidenote-mode="full"] .cm-line.HyperMD-footnote {
 				display: none;
 			}
 			`
-					: ""
+				: ""
 			}
 
 			/* CM6 footnote sidenote widget */
@@ -1214,27 +1217,25 @@ export default class SidenotePlugin extends Plugin {
 			}
 
 			/* Hide original footnote reference when converted to sidenote in editing mode */
-			${
-				this.settings.sidenoteFormat === "footnote-edit"
-					? `
+			${this.settings.sidenoteFormat === "footnote-edit"
+				? `
 			.cm-line:has(.sidenote-number[data-footnote-id]) .cm-footref {
 				display: none;
 			}
 			`
-					: ""
+				: ""
 			}
 
 			/* Hide footnote definitions in editing mode when using footnote-edit */
-			${
-				this.settings.sidenoteFormat === "footnote-edit"
-					? `
+			${this.settings.sidenoteFormat === "footnote-edit"
+				? `
 			.markdown-source-view.mod-cm6[data-has-sidenotes="true"][data-sidenote-mode="normal"] .cm-line.HyperMD-footnote,
 			.markdown-source-view.mod-cm6[data-has-sidenotes="true"][data-sidenote-mode="compact"] .cm-line.HyperMD-footnote,
 			.markdown-source-view.mod-cm6[data-has-sidenotes="true"][data-sidenote-mode="full"] .cm-line.HyperMD-footnote {
 				display: none;
 			}
 			`
-					: ""
+				: ""
 			}
 `;
 
@@ -3047,382 +3048,6 @@ export default class SidenotePlugin extends Plugin {
 		);
 
 		this.resolveCollisions(margins, this.settings.collisionSpacing);
-	}
-}
-
-// ======================================================
-// ==================== Settings Tab ====================
-// ======================================================
-
-class SidenoteSettingTab extends PluginSettingTab {
-	plugin: SidenotePlugin;
-
-	constructor(app: App, plugin: SidenotePlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
-
-		containerEl.createEl("h2", { text: "Display" });
-
-		new Setting(containerEl)
-			.setName("Sidenote position")
-			.setDesc(
-				"Which margin to display sidenotes in (text will be offset to the opposite side)",
-			)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("left", "Left margin")
-					.addOption("right", "Right margin")
-					.setValue(this.plugin.settings.sidenotePosition)
-					.onChange(async (value: "left" | "right") => {
-						this.plugin.settings.sidenotePosition = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Show sidenote numbers")
-			.setDesc("Display reference numbers in text and sidenotes")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.showSidenoteNumbers)
-					.onChange(async (value) => {
-						this.plugin.settings.showSidenoteNumbers = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Number style")
-			.setDesc("How to format sidenote numbers")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("arabic", "Arabic (1, 2, 3)")
-					.addOption("roman", "Roman (i, ii, iii)")
-					.addOption("letters", "Letters (a, b, c)")
-					.setValue(this.plugin.settings.numberStyle)
-					.onChange(async (value: "arabic" | "roman" | "letters") => {
-						this.plugin.settings.numberStyle = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Number badge style")
-			.setDesc("Visual style for sidenote numbers")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("plain", "Plain (superscript)")
-					.addOption("neumorphic", "Neumorphic (subtle badge)")
-					.addOption("pill", "Pill (colored capsule)")
-					.setValue(this.plugin.settings.numberBadgeStyle)
-					.onChange(async (value: "plain" | "neumorphic" | "pill") => {
-						this.plugin.settings.numberBadgeStyle = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-		new Setting(containerEl)
-			.setName("Number color")
-			.setDesc(
-				"Custom color for sidenote numbers (leave empty for theme default)",
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder("#666666 or rgb(100,100,100)")
-					.setValue(this.plugin.settings.numberColor)
-					.onChange(async (value) => {
-						this.plugin.settings.numberColor = value.trim();
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Sidenote format")
-			.setDesc("Choose how sidenotes are written in your documents")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption(
-						"html",
-						'HTML spans: <span class="sidenote">text</span>',
-					)
-					.addOption("footnote", "Footnotes (reading mode only)")
-					.addOption(
-						"footnote-edit",
-						"Footnotes (reading + editing mode) [experimental]",
-					)
-					.setValue(this.plugin.settings.sidenoteFormat)
-					.onChange(
-						async (value: "html" | "footnote" | "footnote-edit") => {
-							this.plugin.settings.sidenoteFormat = value;
-							await this.plugin.saveSettings();
-						},
-					),
-			);
-
-		containerEl.createEl("h2", { text: "Width & Spacing" });
-
-		new Setting(containerEl)
-			.setName("Sidenote anchor")
-			.setDesc(
-				"Whether sidenotes are positioned relative to the text body or the editor edge",
-			)
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("text", "Anchor to text (traditional)")
-					.addOption("edge", "Anchor to editor edge")
-					.setValue(this.plugin.settings.sidenoteAnchor)
-					.onChange(async (value: "text" | "edge") => {
-						this.plugin.settings.sidenoteAnchor = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Minimum sidenote width")
-			.setDesc("Base width of sidenotes in rem (default: 10)")
-			.addSlider((slider) =>
-				slider
-					.setLimits(5, 25, 1)
-					.setValue(this.plugin.settings.minSidenoteWidth)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.minSidenoteWidth = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Maximum sidenote width")
-			.setDesc("Maximum width of sidenotes in rem (default: 18)")
-			.addSlider((slider) =>
-				slider
-					.setLimits(10, 40, 1)
-					.setValue(this.plugin.settings.maxSidenoteWidth)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.maxSidenoteWidth = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Minimum Gap between sidenote and text")
-			.setDesc(
-				"Space between the margin and body text in rem (default: 2)",
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(0.5, 30, 0.5)
-					.setValue(this.plugin.settings.sidenoteGap)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.sidenoteGap = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Minimum gap between sidenote and editor edge")
-			.setDesc(
-				"When anchored to text: minimum distance from editor edge. When anchored to edge: minimum distance from text body. (rem, default: 1)",
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(0, 10, 0.5)
-					.setValue(this.plugin.settings.sidenoteGap2)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.sidenoteGap2 = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Page Offset Factor")
-			.setDesc(
-				"Adjusts how much body text gets nudged over - only affects notes with sidenotes (default: 0.5)",
-			)
-			.addSlider((slider) =>
-				slider
-					.setLimits(0.1, 1, 0.1)
-					.setValue(this.plugin.settings.pageOffsetFactor)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.pageOffsetFactor = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		containerEl.createEl("h2", { text: "Breakpoints" });
-
-		new Setting(containerEl)
-			.setName("Hide below width")
-			.setDesc("Hide sidenotes when editor width is below this (px)")
-			.addText((text) =>
-				text
-					.setPlaceholder("700")
-					.setValue(String(this.plugin.settings.hideBelow))
-					.onChange(async (value) => {
-						const num = parseInt(value, 10);
-						if (!isNaN(num) && num > 0) {
-							this.plugin.settings.hideBelow = num;
-							await this.plugin.saveSettings();
-						}
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Compact below width")
-			.setDesc("Use compact mode when editor width is below this (px)")
-			.addText((text) =>
-				text
-					.setPlaceholder("900")
-					.setValue(String(this.plugin.settings.compactBelow))
-					.onChange(async (value) => {
-						const num = parseInt(value, 10);
-						if (!isNaN(num) && num > 0) {
-							this.plugin.settings.compactBelow = num;
-							await this.plugin.saveSettings();
-						}
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Full width above")
-			.setDesc(
-				"Use full-width sidenotes when editor width is above this (px)",
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder("1400")
-					.setValue(String(this.plugin.settings.fullAbove))
-					.onChange(async (value) => {
-						const num = parseInt(value, 10);
-						if (!isNaN(num) && num > 0) {
-							this.plugin.settings.fullAbove = num;
-							await this.plugin.saveSettings();
-						}
-					}),
-			);
-
-		containerEl.createEl("h2", { text: "Typography" });
-
-		new Setting(containerEl)
-			.setName("Font size")
-			.setDesc("Font size as percentage of body text (default: 80)")
-			.addSlider((slider) =>
-				slider
-					.setLimits(50, 100, 5)
-					.setValue(this.plugin.settings.fontSize)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.fontSize = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Font size (compact mode)")
-			.setDesc("Font size in compact mode as percentage (default: 70)")
-			.addSlider((slider) =>
-				slider
-					.setLimits(50, 100, 5)
-					.setValue(this.plugin.settings.fontSizeCompact)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.fontSizeCompact = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Line height")
-			.setDesc("Line height for sidenote text (default: 1.35)")
-			.addSlider((slider) =>
-				slider
-					.setLimits(1, 2, 0.05)
-					.setValue(this.plugin.settings.lineHeight)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.lineHeight = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Text alignment")
-			.setDesc("How to align text in sidenotes")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("left", "Left")
-					.addOption("right", "Right")
-					.addOption("justify", "Justified")
-					.setValue(this.plugin.settings.textAlignment)
-					.onChange(async (value: "left" | "right" | "justify") => {
-						this.plugin.settings.textAlignment = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		containerEl.createEl("h2", { text: "Behavior" });
-
-		new Setting(containerEl)
-			.setName("Collision spacing")
-			.setDesc("Minimum pixels between stacked sidenotes (default: 8)")
-			.addSlider((slider) =>
-				slider
-					.setLimits(0, 20, 1)
-					.setValue(this.plugin.settings.collisionSpacing)
-					.setDynamicTooltip()
-					.onChange(async (value) => {
-						this.plugin.settings.collisionSpacing = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Enable smooth transitions")
-			.setDesc("Animate width and position changes")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.enableTransitions)
-					.onChange(async (value) => {
-						this.plugin.settings.enableTransitions = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Reset numbering per heading")
-			.setDesc("Restart sidenote numbering after each heading")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.resetNumberingPerHeading)
-					.onChange(async (value) => {
-						this.plugin.settings.resetNumberingPerHeading = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		// Help section
-		containerEl.createEl("h2", { text: "Formatting Help" });
-
-		const helpDiv = containerEl.createDiv({ cls: "sidenote-help" });
-		helpDiv.innerHTML = `
-            <p>Sidenotes support basic Markdown formatting:</p>
-            <ul>
-                <li><code>**bold**</code> or <code>__bold__</code> → <strong>bold</strong></li>
-                <li><code>*italic*</code> or <code>_italic_</code> → <em>italic</em></li>
-                <li><code>\`code\`</code> → <code>code</code></li>
-                <li><code>[link](url)</code> → clickable link</li>
-                <li><code>[[Note]]</code> or <code>[[Note|display]]</code> → internal link</li>
-            </ul>
-            <p>Use the command palette to insert sidenotes quickly.</p>
-        `;
 	}
 }
 
