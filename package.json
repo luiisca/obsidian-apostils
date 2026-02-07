@@ -1,6 +1,6 @@
 {
 	"name": "apostils",
-	"version": "0.1.6",
+	"version": "0.2.0",
 	"description": "Obsidian plugin to create highlights, attach persistent sidenote annotations, and export your extracted notes to the vault or clipboard.",
 	"author": "luiisca",
 	"main": "main.js",
